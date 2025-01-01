@@ -1,0 +1,7 @@
+---
+- name: Automated-Linux Playbook
+  hosts: localhost
+  tasks:
+    - name: Print Automated-Linux
+      ansible.builtin.command: figlet -f standard -w 160 "Automated - Linux"
+      changed_when: false
