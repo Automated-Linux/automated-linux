@@ -4,10 +4,12 @@ from dialog import Dialog
 import signal
 import sys
 
-class Installer:
+class InstallerResponse:
     NEXT = 1
     NONE = 0
     PREVIOUS = -1
+
+class Installer:
 
     def __init__(self, columns: int, lines: int):
         self.config = self.load_config()
@@ -54,7 +56,7 @@ class Installer:
         if ret == Dialog.OK:
             sys.exit(1)
         else:
-            return self.NONE
+            return InstallerResponse.NONE
 
     def license_agreement(self):
         license_text = ""
@@ -76,9 +78,9 @@ class Installer:
             if ret == Dialog.OK:
                 sys.exit(1)
             else:
-                return self.NONE
+                return InstallerResponse.NONE
        
-        return self.NEXT
+        return InstallerResponse.NEXT
     
     def set_architeture(self):
         self.dialog.add_persistent_args(["--default-item", self.config['ARCH']])
@@ -95,15 +97,15 @@ class Installer:
 
         if code == Dialog.OK:
             self.config['ARCH'] = tag
-            return self.NEXT
+            return InstallerResponse.NEXT
         elif code == Dialog.EXTRA:
-            return self.PREVIOUS
+            return InstallerResponse.PREVIOUS
         else:
             ret = self.abort_installation()
             if ret == Dialog.OK:
                 sys.exit(1)
             else:
-                return self.NONE
+                return InstallerResponse.NONE
 
     def set_username(self):
         code, tag = self.dialog.inputbox("\n\\ZbUsername\\ZB", 
@@ -119,15 +121,15 @@ class Installer:
 
         if code == Dialog.OK:
             self.config['USERNAME'] = tag
-            return self.NEXT
+            return InstallerResponse.NEXT
         elif code == Dialog.EXTRA:
-            return self.PREVIOUS
+            return InstallerResponse.PREVIOUS
         else:
             ret = self.abort_installation()
             if ret == Dialog.OK:
                 sys.exit(1)
             else:
-                return self.NONE
+                return InstallerResponse.NONE
 
     def set_password(self):
         code, password1 = self.dialog.passwordbox("\n\\ZbPassword\\ZB", 
@@ -144,14 +146,14 @@ class Installer:
         if code == Dialog.OK:
             return self.handle_password_input(password1)
         elif code == Dialog.EXTRA:
-            return self.PREVIOUS
+            return InstallerResponse.PREVIOUS
         else:
             return self.handle_abort()
 
     def handle_password_input(self, password1):
         if password1 == "" or len(password1) < 8:
             self.dialog.msgbox("Password must be at least 8 characters long. Please try again.", width=40, height=8, title="Error")
-            return self.NONE
+            return InstallerResponse.NONE
         
         code, password2 = self.dialog.passwordbox("\n\\ZbRepeat Password\\ZB", 
             width=40, 
@@ -167,7 +169,7 @@ class Installer:
         if code == Dialog.OK:
             return self.handle_password_confirmation(password1, password2)
         elif code == Dialog.EXTRA:
-            return self.PREVIOUS
+            return InstallerResponse.PREVIOUS
         else:
             return self.handle_abort()
 
@@ -177,14 +179,14 @@ class Installer:
             return self.NONE
         else:
             self.config['PASSWORD'] = password1
-            return self.NEXT
+            return InstallerResponse.NEXT
 
     def handle_abort(self):
         ret = self.abort_installation()
         if ret == Dialog.OK:
             sys.exit(1)
         else:
-            return self.NONE
+            return InstallerResponse.NONE
 
     def run(self):
         run_config = [
