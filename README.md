@@ -23,7 +23,7 @@ To set up a Python virtual environment using Python 3.13 for installing Ansible,
 4. **Install Ansible**: With the virtual environment activated, install Ansible using `pip`.
 
    ```sh
-   pip install ansible ansible-lint ansible-runner
+   pip install ansible ansible-lint ansible-runner pyfiglet pythondialog
    ```
 
 5. **Verify the installation**: Check that Ansible is installed correctly by running:

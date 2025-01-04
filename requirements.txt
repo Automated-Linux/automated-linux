@@ -23,12 +23,14 @@ pexpect==4.9.0
 platformdirs==4.3.6
 ptyprocess==0.7.0
 pycparser==2.22
+pyfiglet==1.0.2
 python-daemon==3.1.2
+pythondialog==3.5.3
 PyYAML==6.0.2
 referencing==0.35.1
 resolvelib==1.0.1
 rpds-py==0.22.3
-ruamel.yaml==0.18.7
+ruamel.yaml==0.18.8
 subprocess-tee==0.4.2
 wcmatch==10.0
 yamllint==1.35.1
