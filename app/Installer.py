@@ -16,6 +16,7 @@ class Installer:
 
         self.dialog = Dialog(dialog="dialog")
         self.dialog.set_background_title("Automated Linux Setup")
+        self.dialog.add_persistent_args(["--colors", "--insecure", "--no-collapse"])
 
         self.width = columns
         self.height = lines
@@ -52,6 +53,7 @@ class Installer:
             outfile.close()
 
     def abort_installation(self):
+        self.dialog.add_persistent_args(["--defaultno"])
         ret = self.dialog.yesno("\nAre you sure you want to abort the installation?", width=50, height=8, title="Abort Installation")
         if ret == Dialog.OK:
             sys.exit(1)
