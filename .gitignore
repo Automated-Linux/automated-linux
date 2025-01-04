@@ -1,4 +1,10 @@
 venv
 *.pyc
+__pycache__/
 playbooks/artifacts
 .vscode
+downloads
+.config*
+test.py
+vars.yml
+packages.txt

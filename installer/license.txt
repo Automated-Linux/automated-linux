@@ -1,0 +1,12 @@
+
+\Z4\ZbAutomated-Linux\ZB\Z0 is a free operating system based on Linux. This installer will guide you through the installation of Automated-Linux system.
+It will ask you for some information and then install the system.
+
+Automated-Linux is free software: you can redistribute it and/or modify it under the terms of the \Z4\ZbGNU General Public License v3.0\ZB\Z0. (\Z4\Zuhttps://www.gnu.org/licenses/gpl-3.0.html\ZU\Z0)
+
+This program comes with \ZbABSOLUTELY NO WARRANTY\ZB.
+This is free software, and you are welcome to redistribute it under certain conditions.
+See the GNU General Public License for more details.
+
+                
+\Z4Are you ready to proceed?\Z0
