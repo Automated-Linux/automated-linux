@@ -6,5 +6,5 @@ playbooks/artifacts
 downloads
 .config*
 test.py
-vars.yml
+vars.yaml
 packages.txt
