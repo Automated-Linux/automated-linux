@@ -1,8 +1,9 @@
-from AbortWidget import AbortWidget
-from InstallerResponse import InstallerResponse
 import psutil
 from dialog import Dialog
 import sys
+
+from app.setup.response import InstallerResponse
+from app.setup.widgets.abort import AbortWidget
 
 
 class NetworkWidget:

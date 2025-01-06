@@ -1,6 +1,7 @@
 import sys
 from dialog import Dialog
-from InstallerResponse import InstallerResponse
+
+from app.setup.response import InstallerResponse
 
 
 class AbortWidget:

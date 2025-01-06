@@ -1,12 +1,13 @@
 import os
 from dialog import Dialog
 import signal
-from ConfigManager import ConfigManager
-from LicenseWidget import LicenseWidget
-from ArchitectureWidget import ArchitectureWidget
-from UsernameWidget import UsernameWidget
-from PasswordWidget import PasswordWidget
-from NetworkWidget import NetworkWidget
+
+from app.setup.config import ConfigManager
+from app.setup.widgets.architecture import ArchitectureWidget
+from app.setup.widgets.license import LicenseWidget
+from app.setup.widgets.network import NetworkWidget
+from app.setup.widgets.password import PasswordWidget
+from app.setup.widgets.username import UsernameWidget
 
 
 class Installer:

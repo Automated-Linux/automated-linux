@@ -1,7 +1,7 @@
 from pyfiglet import Figlet
-from .Config import APP_NAME
-from .AnsibleRunner import AnsibleRunner
-from .Setup import Installer
+from app.config import APP_NAME
+from app.runner import AnsibleRunner
+from app.setup import Installer, calculate_size, run_installer
 import sys
 
 
@@ -52,8 +52,8 @@ class Main():
         Raises:
             FileNotFoundError: If the '.config' file is not found.
         """
-        size = Installer.calculate_size()
-        Installer.run_installer(size['columns'], size['lines'])
+        size = calculate_size()
+        run_installer(size['columns'], size['lines'])
         try:
             with open('.config', 'r') as f:
                 f.close()

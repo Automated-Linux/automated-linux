@@ -1,7 +1,8 @@
 import sys
 from dialog import Dialog
-from InstallerResponse import InstallerResponse
-from AbortWidget import AbortWidget
+
+from app.setup.response import InstallerResponse
+from app.setup.widgets.abort import AbortWidget
 
 
 class LicenseWidget:
