@@ -1,0 +1,54 @@
+---
+automated_user: "automated"
+automated_group: "automated"
+packages:
+  - coreutils
+  - bash
+  - binutils
+  - bison
+  - diffutils
+  - findutils
+  - gawk
+  - gcc
+  - g++
+  - grep
+  - gzip
+  - m4
+  - make
+  - patch
+  - perl
+  - sed
+  - tar
+  - texinfo
+  - xz-utils
+  - bzip2
+root_image:
+  image: "automated-linux-root.img"
+  size: "10G"
+  mount_point: "/mnt/automated-linux"
+sources_image:
+  image: "automated-linux-sources.img"
+  size: "20G"
+  mount_point: "/mnt/automated-linux/sources"
+directories:
+  - "{{ root_image.mount_point }}/etc"
+  - "{{ root_image.mount_point }}/var"
+  - "{{ root_image.mount_point }}/usr"
+  - "{{ root_image.mount_point }}/usr/bin"
+  - "{{ root_image.mount_point }}/usr/lib"
+  - "{{ root_image.mount_point }}/usr/sbin"
+  - "{{ root_image.mount_point }}/usr/share"
+  - "{{ root_image.mount_point }}/usr/src"
+  - "{{ root_image.mount_point }}/usr/include"
+  - "{{ root_image.mount_point }}/tools"
+  - "{{ root_image.mount_point }}/home/{{ automated_user }}"
+directory_links:
+  - bin:
+    src: "usr/bin"
+    dest: "{{ root_image.mount_point }}/bin"
+  - lib:
+    src: "usr/lib"
+    dest: "{{ root_image.mount_point }}/lib"
+  - sbin:
+    src: "usr/sbin"
+    dest: "{{ root_image.mount_point }}/sbin"

@@ -5,36 +5,8 @@
   collections:
     - ansible.posix
 
-  vars:
-    packages:
-      - coreutils
-      - bash
-      - binutils
-      - bison
-      - diffutils
-      - findutils
-      - gawk
-      - gcc
-      - g++
-      - grep
-      - gzip
-      - m4
-      - make
-      - patch
-      - perl
-      - sed
-      - tar
-      - texinfo
-      - xz-utils
-      - bzip2
-    root_image:
-      image: "automated-linux-root.img"
-      size: "10G"
-      mount_point: "/mnt/automated-linux"
-    sources_image:
-      image: "automated-linux-sources.img"
-      size: "20G"
-      mount_point: "/mnt/automated-linux/sources"
+  vars_files:
+    - vars/automated-linux.yaml
 
   tasks:
     - name: Install packages
@@ -42,6 +14,22 @@
       ansible.builtin.package:
         name: "{{ packages }}"
         state: present
+
+    - name: Create groups
+      become: true
+      ansible.builtin.group:
+        name: "{{ automated_user }}"
+        state: present
+
+    - name: Create user
+      become: true
+      ansible.builtin.user:
+        name: "{{ automated_user }}"
+        group: "{{ automated_group }}"
+        state: present
+        shell: "/bin/bash"
+        home: "{{ root_image.mount_point }}/home/{{ automated_user }}"
+        createhome: false
 
     - name: Create images
       changed_when: false
@@ -65,7 +53,52 @@
         path: "{{ item.mount_point }}"
         src: "{{ item.image }}"
         fstype: "ext4"
-        state: "present"
+        state: "mounted"
       with_items:
         - "{{ root_image }}"
         - "{{ sources_image }}"
+
+    - name: Set ownership to mounted directories
+      become: true
+      ansible.builtin.file:
+        path: "{{ item.mount_point }}"
+        owner: "{{ automated_user }}"
+        group: "{{ automated_group }}"
+        mode: "0755"
+      with_items:
+        - "{{ root_image }}"
+        - "{{ sources_image }}"
+
+    - name: Create directories
+      become: true
+      become_user: "{{ automated_user }}"
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      with_items:
+        - "{{ directories }}"
+
+    - name: Create directory links
+      become: true
+      become_user: "{{ automated_user }}"
+      ansible.builtin.file:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        state: link
+      with_items:
+        - "{{ directory_links }}"
+
+    - name: Copy templates to home directory
+      become: true
+      ansible.builtin.template:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        owner: "{{ automated_user }}"
+        group: "{{ automated_group }}"
+        mode: "0644"
+      with_items:
+        - src: "templates/.bashrc.j2"
+          dest: "{{ root_image.mount_point }}/home/{{ automated_user }}/.bashrc"
+        - src: "templates/.bash_profile.j2"
+          dest: "{{ root_image.mount_point }}/home/{{ automated_user }}/.bash_profile"
