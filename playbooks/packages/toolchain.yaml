@@ -22,3 +22,11 @@
       ansible.builtin.import_tasks: toolchain/binutils.yaml
       vars:
         binutils_version: binutils-2.43.1
+
+    - name: Import gcc stage1 tasks
+      ansible.builtin.import_tasks: toolchain/gcc_stage1.yaml
+      vars:
+        gcc_version: gcc-14.2.0
+        mpfr_version: mpfr-4.2.1
+        gmp_version: gmp-6.3.0
+        mpc_version: mpc-1.3.1
