@@ -137,7 +137,7 @@
   become: true
   become_user: "{{ automated_user }}"
   ansible.builtin.command: |
-    make -j{{ nproc.stdout * 4 }}
+    make -j{{ nproc.stdout}}
   args:
     chdir: "{{ sources_image.mount_point }}/{{ gcc_version }}/build"
   register: result
