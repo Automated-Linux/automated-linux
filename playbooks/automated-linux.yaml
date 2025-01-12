@@ -1,3 +1,4 @@
+# code: language=ansible
 ---
 - name: Automated-Linux Playbook
   hosts: "{{ host | default('localhost') }}"

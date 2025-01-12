@@ -1,3 +1,4 @@
+# code: language=ansible
 ---
 - name: Automated-Linux Prepare
   hosts: "{{ host | default('localhost') }}"
@@ -47,7 +48,7 @@
         - "{{ root_image }}"
         - "{{ sources_image }}"
 
-    - name: Mount images
+    - name: Mount images # noqa: syntax-check[unknown-module]
       become: true
       ansible.posix.mount:
         path: "{{ item.mount_point }}"
