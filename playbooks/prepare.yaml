@@ -3,7 +3,7 @@
   hosts: "{{ host | default('localhost') }}"
   gather_facts: false
   collections:
-    - ansible.posix.mount
+    - ansible.posix
 
   vars:
     packages:

@@ -17,26 +17,25 @@ class Main():
         Handles FileNotFoundError if the .config file is not found.
     """
 
-    def __init__(self):
+    def __init__(self, **kwargs):
         """
-        Initializes the application by rendering the title using the Figlet library.
+        Initializes the main application.
 
-        This method sets up the initial state of the application by creating a Figlet
-        object with a specified font and width. It then renders the application name
-        as a stylized text and prints it to the console in yellow color.
+        Args:
+            *args: Variable length argument list.
+            **kwargs: Arbitrary keyword arguments.
 
         Attributes:
-            None
+            ansible (AnsibleRunner): An instance of AnsibleRunner initialized with the provided arguments.
 
-        Parameters:
-            None
-
-        Returns:
-            None
+        Side Effects:
+            Prints the application title in a stylized font to the console.
         """
+
         f = Figlet(font='standard', width=160)
         title = f.renderText(APP_NAME)
         print(f"\33[33m{title}\033[00m")
+        self.ansible = AnsibleRunner(**kwargs)
 
     def run(self):
         """
@@ -58,8 +57,7 @@ class Main():
             with open('.config', 'r') as f:
                 f.close()
 
-                ansible = AnsibleRunner()
-                ansible.run()
+                self.ansible.run()
 
         except FileNotFoundError:
             sys.stderr.write("unable to open .config file")

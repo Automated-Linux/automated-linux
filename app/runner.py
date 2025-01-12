@@ -27,9 +27,11 @@ def handle_res_output(res, color, event_type):
 
 
 class AnsibleRunner(Runner):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, **kwargs):
+        print("Running AnsibleRunner")
+
         config = RunnerConfig(private_data_dir='playbooks',
-                              playbook='automated-linux.yaml', quiet=True)
+                              playbook='automated-linux.yaml', extravars=kwargs, quiet=True)
         config.prepare()
         # to avoid ansible_runner's internal stdout dump
         config.suppress_ansible_output = True
