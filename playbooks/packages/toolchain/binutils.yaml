@@ -1,0 +1,66 @@
+---
+- name: Down binutils package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.get_url:
+    url: "https://ftp.gnu.org/gnu/binutils/{{ binutils_version }}.tar.xz"
+    dest: "{{ sources_image.mount_point }}/{{ binutils_version }}.tar.xz"
+    mode: "0644"
+
+- name: Extract binutils package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.unarchive:
+    src: "{{ sources_image.mount_point }}/{{ binutils_version }}.tar.xz"
+    dest: "{{ sources_image.mount_point }}"
+    remote_src: true
+    creates: "{{ sources_image.mount_point }}/{{ binutils_version }}"
+
+- name: Create binutils build directory
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.file:
+    path: "{{ sources_image.mount_point }}/{{ binutils_version }}/build"
+    state: directory
+    mode: "0755"
+
+- name: Configure binutils package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.command: |
+    ../configure --prefix={{ root_image.mount_point }}/tools \
+    --with-sysroot={{ root_image.mount_point }} \
+    --target="{{ arch.stdout }}-automated-linux-gnu" \
+    --disable-nls       \
+    --enable-gprofng=no \
+    --disable-werror    \
+    --enable-new-dtags  \
+    --enable-default-hash-style=gnu
+  register: result
+  args:
+    chdir: "{{ sources_image.mount_point }}/{{ binutils_version }}/build"
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Build binutils package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.command: |
+    make -j{{ nproc.stdout * 4 }}
+  args:
+    chdir: "{{ sources_image.mount_point }}/{{ binutils_version }}/build"
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Install binutils package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.command: |
+    make install
+  args:
+    chdir: "{{ sources_image.mount_point }}/{{ binutils_version }}/build"
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0

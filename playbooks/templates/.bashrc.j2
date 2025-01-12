@@ -1,9 +1,7 @@
 set +h
 umask 022
 LC_ALL=POSIX
-TARGET=$(uname -m)-lfs-linux-gnu
 PATH=/usr/bin
 if [ ! -L /bin ]; then PATH=/bin:$PATH; fi
 PATH={{ root_image.mount_point }}/tools/bin:$PATH
-export LC_ALL TARGET PATH
-export MAKEFLAGS=-j$(($(nproc)*4))
+export LC_ALL PATH
