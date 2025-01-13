@@ -195,3 +195,15 @@
     - ret.rc != 0
     - ret.stderr != ''
   changed_when: false
+
+- name: Remove gcc directory
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.file:
+    state: absent
+    path: "{{ sources_image.mount_point }}/{{ item }}"
+  with_items:
+    - "{{ gcc_version }}"
+    - "{{ mpfr_version }}"
+    - "{{ gmp_version }}"
+    - "{{ mpc_version }}"
