@@ -4,15 +4,15 @@
   become: true
   become_user: "{{ automated_user }}"
   ansible.builtin.get_url:
-    url: "{{ url }}"
-    dest: "{{ sources_image.mount_point }}/{{ url | basename }}"
+    url: "{{ linux_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ linux_url | basename }}"
     mode: "0644"
 
 - name: Extract linux kernel package
   become: true
   become_user: "{{ automated_user }}"
   ansible.builtin.unarchive:
-    src: "{{ sources_image.mount_point }}/{{ url | basename }}"
+    src: "{{ sources_image.mount_point }}/{{ linux_url | basename }}"
     dest: "{{ sources_image.mount_point }}"
     remote_src: true
     creates: "{{ sources_image.mount_point }}/{{ linux_version }}"

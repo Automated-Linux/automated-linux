@@ -23,17 +23,22 @@
       ansible.builtin.import_tasks: toolchain/binutils.yaml
       vars:
         binutils_version: binutils-2.43.1
+        binutils_url: https://ftp.gnu.org/gnu/binutils/binutils-2.43.1.tar.xz
 
     - name: Import gcc stage1 tasks
       ansible.builtin.import_tasks: toolchain/gcc_stage1.yaml
       vars:
         gcc_version: gcc-14.2.0
+        gcc_url: https://ftp.gnu.org/gnu/gcc/gcc-14.2.0/gcc-14.2.0.tar.xz
         mpfr_version: mpfr-4.2.1
+        mpfr_url: https://ftp.gnu.org/gnu/mpfr/mpfr-4.2.1.tar.xz
         gmp_version: gmp-6.3.0
+        gmp_url: https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz
         mpc_version: mpc-1.3.1
+        mpc_url: https://ftp.gnu.org/gnu/mpc/mpc-1.3.1.tar.gz
 
     - name: Import Linux Headers tasks
       ansible.builtin.import_tasks: toolchain/linux_headers.yaml
       vars:
         linux_version: linux-6.12.8
-        url: https://www.kernel.org/pub/linux/kernel/v6.x/linux-6.12.8.tar.xz
+        linux_url: https://www.kernel.org/pub/linux/kernel/v6.x/linux-6.12.8.tar.xz

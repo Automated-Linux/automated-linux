@@ -4,39 +4,39 @@
   become: true
   become_user: "{{ automated_user }}"
   ansible.builtin.get_url:
-    url: "https://ftp.gnu.org/gnu/gcc/{{ gcc_version }}/{{ gcc_version }}.tar.xz"
-    dest: "{{ sources_image.mount_point }}/{{ gcc_version }}.tar.xz"
+    url: "{{ gcc_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ gcc_url | basename }}"
     mode: "0644"
 
 - name: Download mpfr package
   become: true
   become_user: "{{ automated_user }}"
   ansible.builtin.get_url:
-    url: "https://ftp.gnu.org/gnu/mpfr/{{ mpfr_version }}.tar.xz"
-    dest: "{{ sources_image.mount_point }}/{{ mpfr_version }}.tar.xz"
+    url: "{{ mpfr_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ mpfr_url | basename }}"
     mode: "0644"
 
 - name: Download gmp package
   become: true
   become_user: "{{ automated_user }}"
   ansible.builtin.get_url:
-    url: "https://ftp.gnu.org/gnu/gmp/{{ gmp_version }}.tar.xz"
-    dest: "{{ sources_image.mount_point }}/{{ gmp_version }}.tar.xz"
+    url: "{{ gmp_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ gmp_url | basename }}"
     mode: "0644"
 
 - name: Download mpc package
   become: true
   become_user: "{{ automated_user }}"
   ansible.builtin.get_url:
-    url: "https://ftp.gnu.org/gnu/mpc/{{ mpc_version }}.tar.gz"
-    dest: "{{ sources_image.mount_point }}/{{ mpc_version }}.tar.gz"
+    url: "{{ mpc_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ mpc_url | basename }}"
     mode: "0644"
 
 - name: Extract gcc package
   become: true
   become_user: "{{ automated_user }}"
   ansible.builtin.unarchive:
-    src: "{{ sources_image.mount_point }}/{{ gcc_version }}.tar.xz"
+    src: "{{ sources_image.mount_point }}/{{ gcc_url | basename }}"
     dest: "{{ sources_image.mount_point }}"
     remote_src: true
     creates: "{{ sources_image.mount_point }}/{{ gcc_version }}"
@@ -46,7 +46,7 @@
   become: true
   become_user: "{{ automated_user }}"
   ansible.builtin.unarchive:
-    src: "{{ sources_image.mount_point }}/{{ mpfr_version }}.tar.xz"
+    src: "{{ sources_image.mount_point }}/{{ mpfr_url | basename }}"
     dest: "{{ sources_image.mount_point }}"
     remote_src: true
     creates: "{{ sources_image.mount_point }}/{{ mpfr_version }}"
@@ -56,7 +56,7 @@
   become: true
   become_user: "{{ automated_user }}"
   ansible.builtin.unarchive:
-    src: "{{ sources_image.mount_point }}/{{ gmp_version }}.tar.xz"
+    src: "{{ sources_image.mount_point }}/{{ gmp_url | basename }}"
     dest: "{{ sources_image.mount_point }}"
     remote_src: true
     creates: "{{ sources_image.mount_point }}/{{ gmp_version }}"
@@ -66,7 +66,7 @@
   become: true
   become_user: "{{ automated_user }}"
   ansible.builtin.unarchive:
-    src: "{{ sources_image.mount_point }}/{{ mpc_version }}.tar.gz"
+    src: "{{ sources_image.mount_point }}/{{ mpc_url | basename }}"
     dest: "{{ sources_image.mount_point }}"
     remote_src: true
     creates: "{{ sources_image.mount_point }}/{{ mpc_version }}"

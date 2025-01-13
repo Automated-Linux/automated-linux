@@ -4,15 +4,15 @@
   become: true
   become_user: "{{ automated_user }}"
   ansible.builtin.get_url:
-    url: "https://ftp.gnu.org/gnu/binutils/{{ binutils_version }}.tar.xz"
-    dest: "{{ sources_image.mount_point }}/{{ binutils_version }}.tar.xz"
+    url: "{{ binutils_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ binutils_url | basename }}"
     mode: "0644"
 
 - name: Extract binutils package
   become: true
   become_user: "{{ automated_user }}"
   ansible.builtin.unarchive:
-    src: "{{ sources_image.mount_point }}/{{ binutils_version }}.tar.xz"
+    src: "{{ sources_image.mount_point }}/{{ binutils_url | basename }}"
     dest: "{{ sources_image.mount_point }}"
     remote_src: true
     creates: "{{ sources_image.mount_point }}/{{ binutils_version }}"
