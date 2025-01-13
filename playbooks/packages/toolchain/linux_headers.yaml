@@ -1,0 +1,86 @@
+# code: language=ansible
+---
+- name: Down linux kernel package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.get_url:
+    url: "{{ url }}"
+    dest: "{{ sources_image.mount_point }}/{{ url | basename }}"
+    mode: "0644"
+
+- name: Extract linux kernel package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.unarchive:
+    src: "{{ sources_image.mount_point }}/{{ url | basename }}"
+    dest: "{{ sources_image.mount_point }}"
+    remote_src: true
+    creates: "{{ sources_image.mount_point }}/{{ linux_version }}"
+  register: linux_extract
+
+- name: Configure linux kernel mrproper package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.shell: |
+    make mrproper
+  args:
+    chdir: "{{ sources_image.mount_point }}/{{ linux_version }}"
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Configure linux kernel defconfig package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.shell: |
+    make defconfig
+  args:
+    chdir: "{{ sources_image.mount_point }}/{{ linux_version }}"
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Generate linux kernel headers package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.shell: |
+    make headers
+  args:
+    chdir: "{{ sources_image.mount_point }}/{{ linux_version }}"
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Purge linux kernel headers unusefull files
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.shell: |
+    find usr/include -type f ! -name '*.h' -delete
+  args:
+    chdir: "{{ sources_image.mount_point }}/{{ linux_version }}"
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Purge linux kernel headers files
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.shell: |
+    cp -rv usr/include {{ root_image.mount_point }}/usr
+  args:
+    chdir: "{{ sources_image.mount_point }}/{{ linux_version }}"
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Remove linux kernel directory
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.file:
+    state: absent
+    path: "{{ sources_image.mount_point }}/{{ linux_version }}"

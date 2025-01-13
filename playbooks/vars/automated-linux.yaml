@@ -23,6 +23,7 @@ packages:
   - texinfo
   - xz-utils
   - bzip2
+  - flex
 root_image:
   image: "automated-linux-root.img"
   size: "10G"
