@@ -1,6 +1,6 @@
 # code: language=ansible
 ---
-- name: Down linux kernel package
+- name: Download linux kernel package
   become: true
   become_user: "{{ automated_user }}"
   ansible.builtin.get_url:

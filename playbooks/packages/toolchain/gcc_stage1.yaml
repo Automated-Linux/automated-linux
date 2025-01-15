@@ -130,6 +130,8 @@
   register: result
   args:
     chdir: "{{ sources_image.mount_point }}/{{ gcc_version }}/build"
+  environment:
+    PATH: "{{ root_image.mount_point }}/tools/bin:/usr/bin"
   failed_when:
     - result.rc != 0
   changed_when: result.rc == 0
@@ -137,10 +139,12 @@
 - name: Build gcc package
   become: true
   become_user: "{{ automated_user }}"
-  ansible.builtin.command: |
+  ansible.builtin.shell: |
     make -j{{ nproc.stdout | int * 2 }}
   args:
     chdir: "{{ sources_image.mount_point }}/{{ gcc_version }}/build"
+  environment:
+    PATH: "{{ root_image.mount_point }}/tools/bin:/usr/bin"
   register: result
   failed_when:
     - result.rc != 0
@@ -149,10 +153,12 @@
 - name: Install gcc package
   become: true
   become_user: "{{ automated_user }}"
-  ansible.builtin.command: |
+  ansible.builtin.shell: |
     make install
   args:
     chdir: "{{ sources_image.mount_point }}/{{ gcc_version }}/build"
+  environment:
+    PATH: "{{ root_image.mount_point }}/tools/bin:/usr/bin"
   register: result
   failed_when:
     - result.rc != 0
@@ -169,13 +175,15 @@
     - gcc_lib_target.stderr != ''
   changed_when: false
   environment:
-    PATH: "{{ root_image.mount_point }}/tools/bin"
+    PATH: "{{ root_image.mount_point }}/tools/bin:/usr/bin"
 
 - name: Get gcc target dir
   become: true
   become_user: "{{ automated_user }}"
   ansible.builtin.shell: |
     dirname {{ gcc_lib_target.stdout }}
+  environment:
+    PATH: "{{ root_image.mount_point }}/tools/bin:/usr/bin"
   register: gcc_target
   failed_when:
     - gcc_target.rc != 0

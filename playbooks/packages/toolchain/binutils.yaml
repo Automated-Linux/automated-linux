@@ -1,6 +1,6 @@
 # code: language=ansible
 ---
-- name: Down binutils package
+- name: Download binutils package
   become: true
   become_user: "{{ automated_user }}"
   ansible.builtin.get_url:

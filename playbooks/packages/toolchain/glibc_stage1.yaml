@@ -1,0 +1,73 @@
+# code: language=ansible
+---
+- name: Download glibc package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.get_url:
+    url: "{{ glibc_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ glibc_url | basename }}"
+    mode: "0644"
+
+- name: Extract glibc package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.unarchive:
+    src: "{{ sources_image.mount_point }}/{{ glibc_url | basename }}"
+    dest: "{{ sources_image.mount_point }}"
+    remote_src: true
+    creates: "{{ sources_image.mount_point }}/{{ glibc_version }}"
+  register: glibc_extract
+
+- name: Create glibc build directory
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.file:
+    path: "{{ sources_image.mount_point }}/{{ glibc_version }}/build"
+    state: directory
+    mode: "0755"
+
+- name: Create glibc  configparams file
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.shell: |
+    echo "rootsbindir=/usr/sbin" > configparms
+  register: result
+  args:
+    chdir: "{{ sources_image.mount_point }}/{{ glibc_version }}/build"
+  environment:
+    PATH: "{{ root_image.mount_point }}/tools/bin:/usr/bin"
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Configure glibc package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.shell: |
+    ../configure --prefix=/usr \
+    --host={{ arch.stdout }}-automated-linux-gnu \
+    --build={{ arch.stdout }}-automated-linux-gnu \
+    --with-headers={{ root_image.mount_point }}/usr/include \
+    --disable-nscd \
+    libc_cv_slibdir=/usr/lib
+  environment:
+    PATH: "{{ root_image.mount_point }}/tools/bin:/usr/bin"
+  register: result
+  args:
+    chdir: "{{ sources_image.mount_point }}/{{ glibc_version }}/build"
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Build glibc package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.shell: |
+    make -j{{ nproc.stdout | int * 2 }}
+  args:
+    chdir: "{{ sources_image.mount_point }}/{{ glibc_version }}/build"
+  environment:
+    PATH: "{{ root_image.mount_point }}/tools/bin:/usr/bin"
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
