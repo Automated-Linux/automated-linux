@@ -54,7 +54,7 @@
         path: "{{ item.mount_point }}"
         src: "{{ item.image }}"
         fstype: "ext4"
-        state: "mounted"
+        state: "ephemeral"
       with_items:
         - "{{ root_image }}"
         - "{{ sources_image }}"
