@@ -47,7 +47,7 @@
     ../configure --prefix=/usr \
     --host={{ arch.stdout }}-automated-linux-gnu \
     --build={{ arch.stdout }}-automated-linux-gnu \
-    --with-headers={{ root_image.mount_point }}/usr/include \
+    --with-headers={{ root_image.mount_point }}/tools/include \
     --disable-nscd \
     libc_cv_slibdir=/usr/lib
   environment:
