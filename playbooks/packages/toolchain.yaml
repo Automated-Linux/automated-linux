@@ -44,7 +44,7 @@
         linux_url: https://www.kernel.org/pub/linux/kernel/v6.x/linux-6.12.8.tar.xz
 
     - name: Import Glibc  tasks
-      ansible.builtin.import_tasks: toolchain/glibc_stage1.yaml
+      ansible.builtin.import_tasks: toolchain/glibc.yaml
       vars:
         glibc_version: glibc-2.40
         glibc_url: https://ftp.gnu.org/gnu/glibc/glibc-2.40.tar.xz
