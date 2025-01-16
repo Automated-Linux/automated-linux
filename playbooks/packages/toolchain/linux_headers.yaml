@@ -70,7 +70,7 @@
   become: true
   become_user: "{{ automated_user }}"
   ansible.builtin.shell: |
-    cp -rv usr/include {{ root_image.mount_point }}/usr
+    cp -rv usr/include {{ root_image.mount_point }}/tools
   args:
     chdir: "{{ sources_image.mount_point }}/{{ linux_version }}"
   register: result
