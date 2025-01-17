@@ -1,0 +1,87 @@
+# code: language=ansible
+---
+- name: Download gcc package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.get_url:
+    url: "{{ gcc_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ gcc_url | basename }}"
+    mode: "0644"
+
+- name: Extract gcc package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.unarchive:
+    src: "{{ sources_image.mount_point }}/{{ gcc_url | basename }}"
+    dest: "{{ sources_image.mount_point }}"
+    remote_src: true
+    creates: "{{ sources_image.mount_point }}/{{ gcc_version }}"
+  register: gcc_extract
+
+- name: Create gcc build directory
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.file:
+    path: "{{ sources_image.mount_point }}/{{ gcc_version }}/build"
+    state: directory
+    mode: "0755"
+
+- name: Configure gcc package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.shell: |
+    ../libstdc++-v3/configure \
+    --host="{{ arch.stdout }}-automated-linux-gnu" \
+    --build="{{ arch.stdout }}-automated-linux-gnu"
+    --prefix=/usr \
+    --with-sysroot={{ root_image.mount_point }} \
+    --prefix=/usr                   \
+    --disable-multilib              \
+    --disable-nls                   \
+    --disable-libstdcxx-pch         \
+    --with-gxx-include-dir=/tools/{{ arch.stdout }}-automated-linux-gnu/include/c++/14.2.0
+  register: result
+  args:
+    chdir: "{{ sources_image.mount_point }}/{{ gcc_version }}/build"
+  environment:
+    PATH: "{{ root_image.mount_point }}/tools/bin:/usr/bin"
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Build gcc package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.shell: |
+    make -j{{ nproc.stdout | int * 2 }}
+  args:
+    chdir: "{{ sources_image.mount_point }}/{{ gcc_version }}/build"
+  environment:
+    PATH: "{{ root_image.mount_point }}/tools/bin:/usr/bin"
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Install gcc package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.shell: |
+    make DESTDIR={{ root_image.mount_point }} install
+  args:
+    chdir: "{{ sources_image.mount_point }}/{{ gcc_version }}/build"
+  environment:
+    PATH: "{{ root_image.mount_point }}/tools/bin:/usr/bin"
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Remove gcc directory
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.file:
+    state: absent
+    path: "{{ sources_image.mount_point }}/{{ item }}"
+  with_items:
+    - "{{ gcc_version }}"
