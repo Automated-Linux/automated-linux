@@ -47,7 +47,7 @@
     ../configure --prefix=/usr \
     --host={{ arch.stdout }}-automated-linux-gnu \
     --build={{ arch.stdout }}-automated-linux-gnu \
-    --with-headers={{ root_image.mount_point }}/tools/include \
+    --with-headers={{ root_image.mount_point }}/include \
     --disable-nscd
   environment:
     PATH: "{{ root_image.mount_point }}/tools/bin:/usr/bin"
