@@ -30,7 +30,7 @@
   become: true
   become_user: "{{ automated_user }}"
   ansible.builtin.shell: |
-    echo "rootsbindir=/sbin" > configparms
+    echo "rootsbindir=/usr/sbin" > configparms
   register: result
   args:
     chdir: "{{ sources_image.mount_point }}/{{ glibc_version }}/build"
@@ -44,9 +44,7 @@
   become: true
   become_user: "{{ automated_user }}"
   ansible.builtin.shell: |
-    ../configure --prefix=/ \
-    --exec-prefix=/ \
-    --sbindir=/sbin \
+    ../configure --prefix=/usr \
     --host={{ arch.stdout }}-automated-linux-gnu \
     --build={{ arch.stdout }}-automated-linux-gnu \
     --with-headers={{ root_image.mount_point }}/tools/include \
@@ -73,19 +71,11 @@
     - result.rc != 0
   changed_when: result.rc == 0
 
-- name: Create sbin symlinks
-  become: true
-  become_user: "{{ automated_user }}"
-  ansible.builtin.file:
-    src: "{{ root_image.mount_point }}/tools/bin"
-    dest: "{{ root_image.mount_point }}/tools/sbin"
-    state: link
-
 - name: Install glibc package
   become: true
   become_user: "{{ automated_user }}"
   ansible.builtin.shell: |
-    make DESTDIR={{ root_image.mount_point }}/tools install
+    make DESTDIR={{ root_image.mount_point }} install
   environment:
     PATH: "{{ root_image.mount_point }}/tools/bin:/usr/bin"
   args:
