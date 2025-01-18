@@ -52,9 +52,10 @@
   failed_when:
     - result.rc != 0
   changed_when: result.rc == 0
-# - name: Remove patch directory
-#   become: true
-#   become_user: "{{ automated_user }}"
-#   ansible.builtin.file:
-#     state: absent
-#     path: "{{ sources_image.mount_point }}/{{ patch_version }}"
+
+- name: Remove patch directory
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.file:
+    state: absent
+    path: "{{ sources_image.mount_point }}/{{ patch_version }}"
