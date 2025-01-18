@@ -1,0 +1,60 @@
+# code: language=ansible
+---
+- name: Download tar package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.get_url:
+    url: "{{ tar_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ tar_url | basename }}"
+    mode: "0644"
+
+- name: Extract tar package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.unarchive:
+    src: "{{ sources_image.mount_point }}/{{ tar_url | basename }}"
+    dest: "{{ sources_image.mount_point }}"
+    remote_src: true
+    creates: "{{ sources_image.mount_point }}/{{ tar_version }}"
+
+- name: Configure tar package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.command: |
+    ./configure --prefix=/usr   \
+    --host="{{ arch.stdout }}-automated-linux-gnu" \
+    --build="{{ arch.stdout }}-automated-linux-gnu"
+  register: result
+  args:
+    chdir: "{{ sources_image.mount_point }}/{{ tar_version }}"
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Build tar package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.command: |
+    make -j{{ nproc.stdout | int * 2 }}
+  args:
+    chdir: "{{ sources_image.mount_point }}/{{ tar_version }}"
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Install tar package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.command: |
+    make DESTDIR={{ root_image.mount_point }} install
+  args:
+    chdir: "{{ sources_image.mount_point }}/{{ tar_version }}"
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+# - name: Remove tar directory
+#   become: true
+#   become_user: "{{ automated_user }}"
+#   ansible.builtin.file:
+#     state: absent
+#     path: "{{ sources_image.mount_point }}/{{ tar_version }}"
