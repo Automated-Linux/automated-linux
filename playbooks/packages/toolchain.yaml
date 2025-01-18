@@ -84,3 +84,27 @@
       vars:
         diffutils_version: diffutils-3.10
         diffutils_url: https://ftp.gnu.org/gnu/diffutils/diffutils-3.10.tar.xz
+
+    - name: Import file tasks
+      ansible.builtin.import_tasks: toolchain/file.yaml
+      vars:
+        file_version: file-5.46
+        file_url: https://astron.com/pub/file/file-5.46.tar.gz
+
+    - name: Import findutils tasks
+      ansible.builtin.import_tasks: toolchain/findutils.yaml
+      vars:
+        findutils_version: findutils-4.10.0
+        findutils_url: https://ftp.gnu.org/gnu/findutils/findutils-4.10.0.tar.xz
+
+    - name: Import gawk tasks
+      ansible.builtin.import_tasks: toolchain/gawk.yaml
+      vars:
+        gawk_version: gawk-5.3.0
+        gawk_url: https://ftp.gnu.org/gnu/gawk/gawk-5.3.0.tar.xz
+
+    - name: Import grep tasks
+      ansible.builtin.import_tasks: toolchain/grep.yaml
+      vars:
+        grep_version: grep-3.11
+        grep_url: https://ftp.gnu.org/gnu/grep/grep-3.11.tar.xz
