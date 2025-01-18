@@ -1,6 +1,6 @@
 # code: language=ansible
 ---
-- name: Download gcc package
+- name: Download libstdc++ package
   become: true
   become_user: "{{ automated_user }}"
   ansible.builtin.get_url:
@@ -8,7 +8,7 @@
     dest: "{{ sources_image.mount_point }}/{{ gcc_url | basename }}"
     mode: "0644"
 
-- name: Extract gcc package
+- name: Extract libstdc++ package
   become: true
   become_user: "{{ automated_user }}"
   ansible.builtin.unarchive:
@@ -18,7 +18,7 @@
     creates: "{{ sources_image.mount_point }}/{{ gcc_version }}"
   register: gcc_extract
 
-- name: Create gcc build directory
+- name: Create libstdc++ build directory
   become: true
   become_user: "{{ automated_user }}"
   ansible.builtin.file:
@@ -26,15 +26,13 @@
     state: directory
     mode: "0755"
 
-- name: Configure gcc package
+- name: Configure libstdc++ package
   become: true
   become_user: "{{ automated_user }}"
   ansible.builtin.shell: |
     ../libstdc++-v3/configure \
     --host="{{ arch.stdout }}-automated-linux-gnu" \
-    --build="{{ arch.stdout }}-automated-linux-gnu"
-    --prefix=/usr \
-    --with-sysroot={{ root_image.mount_point }} \
+    --build="{{ arch.stdout }}-automated-linux-gnu" \
     --prefix=/usr                   \
     --disable-multilib              \
     --disable-nls                   \
@@ -49,7 +47,7 @@
     - result.rc != 0
   changed_when: result.rc == 0
 
-- name: Build gcc package
+- name: Build libstdc++ package
   become: true
   become_user: "{{ automated_user }}"
   ansible.builtin.shell: |
@@ -63,7 +61,7 @@
     - result.rc != 0
   changed_when: result.rc == 0
 
-- name: Install gcc package
+- name: Install libstdc++ package
   become: true
   become_user: "{{ automated_user }}"
   ansible.builtin.shell: |
@@ -77,7 +75,7 @@
     - result.rc != 0
   changed_when: result.rc == 0
 
-- name: Remove gcc directory
+- name: Remove libstdc++ directory
   become: true
   become_user: "{{ automated_user }}"
   ansible.builtin.file:
