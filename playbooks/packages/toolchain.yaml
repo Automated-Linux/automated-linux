@@ -19,92 +19,122 @@
         nproc
       register: nproc
 
-    - name: Import binutils tasks
-      ansible.builtin.import_tasks: toolchain/binutils.yaml
-      vars:
-        binutils_version: binutils-2.43.1
-        binutils_url: https://ftp.gnu.org/gnu/binutils/binutils-2.43.1.tar.xz
+    # - name: Import binutils tasks
+    #   ansible.builtin.import_tasks: toolchain/binutils.yaml
+    #   vars:
+    #     binutils_version: binutils-2.43.1
+    #     binutils_url: https://ftp.gnu.org/gnu/binutils/binutils-2.43.1.tar.xz
 
-    - name: Import gcc stage1 tasks
-      ansible.builtin.import_tasks: toolchain/gcc_stage1.yaml
-      vars:
-        gcc_version: gcc-14.2.0
-        gcc_url: https://ftp.gnu.org/gnu/gcc/gcc-14.2.0/gcc-14.2.0.tar.xz
-        mpfr_version: mpfr-4.2.1
-        mpfr_url: https://ftp.gnu.org/gnu/mpfr/mpfr-4.2.1.tar.xz
-        gmp_version: gmp-6.3.0
-        gmp_url: https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz
-        mpc_version: mpc-1.3.1
-        mpc_url: https://ftp.gnu.org/gnu/mpc/mpc-1.3.1.tar.gz
+    # - name: Import gcc stage1 tasks
+    #   ansible.builtin.import_tasks: toolchain/gcc_stage1.yaml
+    #   vars:
+    #     gcc_version: gcc-14.2.0
+    #     gcc_url: https://ftp.gnu.org/gnu/gcc/gcc-14.2.0/gcc-14.2.0.tar.xz
+    #     mpfr_version: mpfr-4.2.1
+    #     mpfr_url: https://ftp.gnu.org/gnu/mpfr/mpfr-4.2.1.tar.xz
+    #     gmp_version: gmp-6.3.0
+    #     gmp_url: https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz
+    #     mpc_version: mpc-1.3.1
+    #     mpc_url: https://ftp.gnu.org/gnu/mpc/mpc-1.3.1.tar.gz
 
-    - name: Import Linux Headers tasks
-      ansible.builtin.import_tasks: toolchain/linux_headers.yaml
-      vars:
-        linux_version: linux-6.12.8
-        linux_url: https://www.kernel.org/pub/linux/kernel/v6.x/linux-6.12.8.tar.xz
+    # - name: Import Linux Headers tasks
+    #   ansible.builtin.import_tasks: toolchain/linux_headers.yaml
+    #   vars:
+    #     linux_version: linux-6.12.8
+    #     linux_url: https://www.kernel.org/pub/linux/kernel/v6.x/linux-6.12.8.tar.xz
 
-    - name: Import Glibc tasks
-      ansible.builtin.import_tasks: toolchain/glibc.yaml
-      vars:
-        glibc_version: glibc-2.40
-        glibc_url: https://ftp.gnu.org/gnu/glibc/glibc-2.40.tar.xz
+    # - name: Import Glibc tasks
+    #   ansible.builtin.import_tasks: toolchain/glibc.yaml
+    #   vars:
+    #     glibc_version: glibc-2.40
+    #     glibc_url: https://ftp.gnu.org/gnu/glibc/glibc-2.40.tar.xz
 
-    - name: Import Libstdc++ tasks
-      ansible.builtin.import_tasks: toolchain/libstdcpp.yaml
-      vars:
-        gcc_version: gcc-14.2.0
-        gcc_url: https://ftp.gnu.org/gnu/gcc/gcc-14.2.0/gcc-14.2.0.tar.xz
+    # - name: Import Libstdc++ tasks
+    #   ansible.builtin.import_tasks: toolchain/libstdcpp.yaml
+    #   vars:
+    #     gcc_version: gcc-14.2.0
+    #     gcc_url: https://ftp.gnu.org/gnu/gcc/gcc-14.2.0/gcc-14.2.0.tar.xz
 
-    - name: Import m4 tasks
-      ansible.builtin.import_tasks: toolchain/m4.yaml
-      vars:
-        m4_version: m4-1.4.19
-        m4_url: https://ftp.gnu.org/gnu/m4/m4-1.4.19.tar.xz
+    # - name: Import m4 tasks
+    #   ansible.builtin.import_tasks: toolchain/m4.yaml
+    #   vars:
+    #     m4_version: m4-1.4.19
+    #     m4_url: https://ftp.gnu.org/gnu/m4/m4-1.4.19.tar.xz
 
-    - name: Import ncurses tasks
-      ansible.builtin.import_tasks: toolchain/ncurses.yaml
-      vars:
-        ncurses_version: ncurses-6.5
-        ncurses_url: https://invisible-mirror.net/archives/ncurses/ncurses-6.5.tar.gz
+    # - name: Import ncurses tasks
+    #   ansible.builtin.import_tasks: toolchain/ncurses.yaml
+    #   vars:
+    #     ncurses_version: ncurses-6.5
+    #     ncurses_url: https://invisible-mirror.net/archives/ncurses/ncurses-6.5.tar.gz
 
-    - name: Import bash tasks
-      ansible.builtin.import_tasks: toolchain/bash.yaml
-      vars:
-        bash_version: bash-5.2.37
-        bash_url: https://ftp.gnu.org/gnu/bash/bash-5.2.37.tar.gz
+    # - name: Import bash tasks
+    #   ansible.builtin.import_tasks: toolchain/bash.yaml
+    #   vars:
+    #     bash_version: bash-5.2.37
+    #     bash_url: https://ftp.gnu.org/gnu/bash/bash-5.2.37.tar.gz
 
-    - name: Import coreutils tasks
-      ansible.builtin.import_tasks: toolchain/coreutils.yaml
-      vars:
-        coreutils_version: coreutils-9.5
-        coreutils_url: https://ftp.gnu.org/gnu/coreutils/coreutils-9.5.tar.xz
+    # - name: Import coreutils tasks
+    #   ansible.builtin.import_tasks: toolchain/coreutils.yaml
+    #   vars:
+    #     coreutils_version: coreutils-9.5
+    #     coreutils_url: https://ftp.gnu.org/gnu/coreutils/coreutils-9.5.tar.xz
 
-    - name: Import diffutils tasks
-      ansible.builtin.import_tasks: toolchain/diffutils.yaml
-      vars:
-        diffutils_version: diffutils-3.10
-        diffutils_url: https://ftp.gnu.org/gnu/diffutils/diffutils-3.10.tar.xz
+    # - name: Import diffutils tasks
+    #   ansible.builtin.import_tasks: toolchain/diffutils.yaml
+    #   vars:
+    #     diffutils_version: diffutils-3.10
+    #     diffutils_url: https://ftp.gnu.org/gnu/diffutils/diffutils-3.10.tar.xz
 
-    - name: Import file tasks
-      ansible.builtin.import_tasks: toolchain/file.yaml
-      vars:
-        file_version: file-5.46
-        file_url: https://astron.com/pub/file/file-5.46.tar.gz
+    # - name: Import file tasks
+    #   ansible.builtin.import_tasks: toolchain/file.yaml
+    #   vars:
+    #     file_version: file-5.46
+    #     file_url: https://astron.com/pub/file/file-5.46.tar.gz
 
-    - name: Import findutils tasks
-      ansible.builtin.import_tasks: toolchain/findutils.yaml
-      vars:
-        findutils_version: findutils-4.10.0
-        findutils_url: https://ftp.gnu.org/gnu/findutils/findutils-4.10.0.tar.xz
+    # - name: Import findutils tasks
+    #   ansible.builtin.import_tasks: toolchain/findutils.yaml
+    #   vars:
+    #     findutils_version: findutils-4.10.0
+    #     findutils_url: https://ftp.gnu.org/gnu/findutils/findutils-4.10.0.tar.xz
 
-    - name: Import gawk tasks
-      ansible.builtin.import_tasks: toolchain/gawk.yaml
-      vars:
-        gawk_version: gawk-5.3.0
-        gawk_url: https://ftp.gnu.org/gnu/gawk/gawk-5.3.0.tar.xz
+    # - name: Import gawk tasks
+    #   ansible.builtin.import_tasks: toolchain/gawk.yaml
+    #   vars:
+    #     gawk_version: gawk-5.3.0
+    #     gawk_url: https://ftp.gnu.org/gnu/gawk/gawk-5.3.0.tar.xz
 
-    - name: Import grep tasks
-      ansible.builtin.import_tasks: toolchain/grep.yaml
+    # - name: Import grep tasks
+    #   ansible.builtin.import_tasks: toolchain/grep.yaml
+    #   vars:
+    #     grep_version: grep-3.11
+    #     grep_url: https://ftp.gnu.org/gnu/grep/grep-3.11.tar.xz
+
+    # - name: Import gzip tasks
+    #   ansible.builtin.import_tasks: toolchain/gzip.yaml
+    #   vars:
+    #     gzip_version: gzip-1.13
+    #     gzip_url: https://ftp.gnu.org/gnu/gzip/gzip-1.13.tar.xz
+
+    # - name: Import make tasks
+    #   ansible.builtin.import_tasks: toolchain/make.yaml
+    #   vars:
+    #     make_version: make-4.4.1
+    #     make_url: https://ftp.gnu.org/gnu/make/make-4.4.1.tar.gz
+
+    - name: Import patch tasks
+      ansible.builtin.import_tasks: toolchain/patch.yaml
       vars:
-        grep_version: grep-3.11
-        grep_url: https://ftp.gnu.org/gnu/grep/grep-3.11.tar.xz
+        patch_version: patch-2.7.6
+        patch_url: https://ftp.gnu.org/gnu/patch/patch-2.7.6.tar.xz
+
+    - name: Import sed tasks
+      ansible.builtin.import_tasks: toolchain/sed.yaml
+      vars:
+        sed_version: sed-4.9
+        sed_url: https://ftp.gnu.org/gnu/sed/sed-4.9.tar.xz
+
+    - name: Import tar tasks
+      ansible.builtin.import_tasks: toolchain/tar.yaml
+      vars:
+        tar_version: tar-1.35
+        tar_url: https://ftp.gnu.org/gnu/tar/tar-1.35.tar.xz
