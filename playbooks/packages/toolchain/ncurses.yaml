@@ -1,0 +1,77 @@
+# code: language=ansible
+---
+- name: Download ncurses package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.get_url:
+    url: "{{ ncurses_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ ncurses_url | basename }}"
+    mode: "0644"
+
+- name: Extract ncurses package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.unarchive:
+    src: "{{ sources_image.mount_point }}/{{ ncurses_url | basename }}"
+    dest: "{{ sources_image.mount_point }}"
+    remote_src: true
+    creates: "{{ sources_image.mount_point }}/{{ ncurses_version }}"
+
+# - name: Create binutils build directory
+#   become: true
+#   become_user: "{{ automated_user }}"
+#   ansible.builtin.file:
+#     path: "{{ sources_image.mount_point }}/{{ ncurses_version }}/build"
+#     state: directory
+#     mode: "0755"
+
+- name: Configure ncurses package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.command: |
+    ./configure --prefix=/usr                \
+    --host="{{ arch.stdout }}-automated-linux-gnu" \
+    --build="{{ arch.stdout }}-automated-linux-gnu" \
+    --mandir=/usr/share/man      \
+    --with-manpage-format=normal \
+    --with-shared                \
+    --without-normal             \
+    --with-cxx-shared            \
+    --without-debug              \
+    --without-ada                \
+    --disable-stripping
+  register: result
+  args:
+    chdir: "{{ sources_image.mount_point }}/{{ ncurses_version }}"
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Build ncurses package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.command: |
+    make -j{{ nproc.stdout | int * 2 }}
+  args:
+    chdir: "{{ sources_image.mount_point }}/{{ ncurses_version }}"
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Install ncurses package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.command: |
+    make DESTDIR={{ sources_image.mount_point }} install
+  args:
+    chdir: "{{ sources_image.mount_point }}/{{ ncurses_version }}"
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Remove ncurses directory
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.file:
+    state: absent
+    path: "{{ sources_image.mount_point }}/{{ ncurses_version }}"

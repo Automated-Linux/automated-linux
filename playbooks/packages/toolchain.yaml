@@ -43,14 +43,26 @@
     #     linux_version: linux-6.12.8
     #     linux_url: https://www.kernel.org/pub/linux/kernel/v6.x/linux-6.12.8.tar.xz
 
-    - name: Import Glibc tasks
-      ansible.builtin.import_tasks: toolchain/glibc.yaml
-      vars:
-        glibc_version: glibc-2.40
-        glibc_url: https://ftp.gnu.org/gnu/glibc/glibc-2.40.tar.xz
+    # - name: Import Glibc tasks
+    #   ansible.builtin.import_tasks: toolchain/glibc.yaml
+    #   vars:
+    #     glibc_version: glibc-2.40
+    #     glibc_url: https://ftp.gnu.org/gnu/glibc/glibc-2.40.tar.xz
 
-    - name: Import Libstdc++ tasks
-      ansible.builtin.import_tasks: toolchain/libstdcpp.yaml
+    # - name: Import Libstdc++ tasks
+    #   ansible.builtin.import_tasks: toolchain/libstdcpp.yaml
+    #   vars:
+    #     gcc_version: gcc-14.2.0
+    #     gcc_url: https://ftp.gnu.org/gnu/gcc/gcc-14.2.0/gcc-14.2.0.tar.xz
+
+    # - name: Import m4 tasks
+    #   ansible.builtin.import_tasks: toolchain/m4.yaml
+    #   vars:
+    #     m4_version: m4-1.4.19
+    #     m4_url: https://ftp.gnu.org/gnu/m4/m4-1.4.19.tar.xz
+
+    - name: Import ncurses tasks
+      ansible.builtin.import_tasks: toolchain/ncurses.yaml
       vars:
-        gcc_version: gcc-14.2.0
-        gcc_url: https://ftp.gnu.org/gnu/gcc/gcc-14.2.0/gcc-14.2.0.tar.xz
+        ncurses_version: ncurses-6.5
+        ncurses_url: https://invisible-mirror.net/archives/ncurses/ncurses-6.5.tar.gz
