@@ -1,0 +1,61 @@
+# code: language=ansible
+---
+- name: Download sed package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.get_url:
+    url: "{{ sed_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ sed_url | basename }}"
+    mode: "0644"
+
+- name: Extract sed package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.unarchive:
+    src: "{{ sources_image.mount_point }}/{{ sed_url | basename }}"
+    dest: "{{ sources_image.mount_point }}"
+    remote_src: true
+    creates: "{{ sources_image.mount_point }}/{{ sed_version }}"
+
+- name: Configure sed package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.command: |
+    ./configure --prefix=/usr   \
+    --host="{{ arch.stdout }}-automated-linux-gnu" \
+    --build="{{ arch.stdout }}-automated-linux-gnu"
+  register: result
+  args:
+    chdir: "{{ sources_image.mount_point }}/{{ sed_version }}"
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Build sed package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.command: |
+    sed -j{{ nproc.stdout | int * 2 }}
+  args:
+    chdir: "{{ sources_image.mount_point }}/{{ sed_version }}"
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Install sed package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.command: |
+    sed DESTDIR={{ root_image.mount_point }} install
+  args:
+    chdir: "{{ sources_image.mount_point }}/{{ sed_version }}"
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Remove sed directory
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.file:
+    state: absent
+    path: "{{ sources_image.mount_point }}/{{ sed_version }}"
