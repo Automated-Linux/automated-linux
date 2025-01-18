@@ -46,7 +46,7 @@
   become: true
   become_user: "{{ automated_user }}"
   ansible.builtin.command: |
-    make DESTDIR={{ sources_image.mount_point }} install
+    make DESTDIR={{ root_image.mount_point }} install
   args:
     chdir: "{{ sources_image.mount_point }}/{{ m4_version }}"
   failed_when:
