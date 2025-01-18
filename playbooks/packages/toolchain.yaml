@@ -78,3 +78,9 @@
       vars:
         coreutils_version: coreutils-9.5
         coreutils_url: https://ftp.gnu.org/gnu/coreutils/coreutils-9.5.tar.xz
+
+    - name: Import diffutils tasks
+      ansible.builtin.import_tasks: toolchain/diffutils.yaml
+      vars:
+        diffutils_version: diffutils-3.10
+        diffutils_url: https://ftp.gnu.org/gnu/diffutils/diffutils-3.10.tar.xz
