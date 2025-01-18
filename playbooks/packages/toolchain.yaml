@@ -72,3 +72,9 @@
       vars:
         bash_version: bash-5.2.37
         bash_url: https://ftp.gnu.org/gnu/bash/bash-5.2.37.tar.gz
+
+    - name: Import coreutils tasks
+      ansible.builtin.import_tasks: toolchain/coreutils.yaml
+      vars:
+        coreutils_version: coreutils-9.5
+        coreutils_url: https://ftp.gnu.org/gnu/coreutils/coreutils-9.5.tar.xz
