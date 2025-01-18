@@ -1,0 +1,70 @@
+---
+- name: Create toolchain
+  hosts: "{{ host | default('localhost') }}"
+  gather_facts: false
+  become: true
+  vars_files:
+    - ../vars/automated-linux.yaml
+  tasks:
+    - name: Get TARGET environment variable
+      changed_when: false
+      ansible.builtin.command: |
+        uname -m
+      register: arch
+
+    - name: Get TARGET environment variable
+      changed_when: false
+      ansible.builtin.command: |
+        nproc
+      register: nproc
+
+    - name: mount dev # noqa: syntax-check[unknown-module]
+      become: true
+      ansible.posix.mount:
+        path: "{{ root_image.mount_point }}/dev"
+        src: /dev
+        opts: bind
+        state: "mounted"
+        fstype: none
+
+    - name: Mount dev pts # noqa: syntax-check[unknown-module]
+      become: true
+      ansible.posix.mount:
+        path: "{{ root_image.mount_point }}/dev/pts"
+        src: "devpts"
+        fstype: "devpts"
+        state: "mounted"
+        opts: gid=5,mode=0620
+
+    - name: Mount dev shm # noqa: syntax-check[unknown-module]
+      become: true
+      ansible.posix.mount:
+        path: "{{ root_image.mount_point }}/dev/shm"
+        src: "tmpfs"
+        fstype: "tmpfs"
+        state: "mounted"
+        opts: nosuid,nodev
+
+    - name: Mount proc # noqa: syntax-check[unknown-module]
+      become: true
+      ansible.posix.mount:
+        path: "{{ root_image.mount_point }}/proc"
+        src: "proc"
+        fstype: "proc"
+        state: "mounted"
+
+    - name: Mount sys # noqa: syntax-check[unknown-module]
+      become: true
+      ansible.posix.mount:
+        path: "{{ root_image.mount_point }}/sys"
+        src: "sysfs"
+        fstype: "sysfs"
+        state: "mounted"
+
+    - name: Mount run # noqa: syntax-check[unknown-module]
+      become: true
+      ansible.posix.mount:
+        path: "{{ root_image.mount_point }}/run"
+        src: "tmpfs"
+        fstype: "tmpfs"
+        state: "mounted"
