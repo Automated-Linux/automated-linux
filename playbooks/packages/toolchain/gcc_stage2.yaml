@@ -1,0 +1,183 @@
+# code: language=ansible
+---
+- name: Download gcc package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.get_url:
+    url: "{{ gcc_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ gcc_url | basename }}"
+    mode: "0644"
+
+- name: Download mpfr package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.get_url:
+    url: "{{ mpfr_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ mpfr_url | basename }}"
+    mode: "0644"
+
+- name: Download gmp package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.get_url:
+    url: "{{ gmp_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ gmp_url | basename }}"
+    mode: "0644"
+
+- name: Download mpc package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.get_url:
+    url: "{{ mpc_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ mpc_url | basename }}"
+    mode: "0644"
+
+- name: Extract gcc package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.unarchive:
+    src: "{{ sources_image.mount_point }}/{{ gcc_url | basename }}"
+    dest: "{{ sources_image.mount_point }}"
+    remote_src: true
+    creates: "{{ sources_image.mount_point }}/{{ gcc_version }}"
+  register: gcc_extract
+
+- name: Extract mpfr package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.unarchive:
+    src: "{{ sources_image.mount_point }}/{{ mpfr_url | basename }}"
+    dest: "{{ sources_image.mount_point }}"
+    remote_src: true
+    creates: "{{ sources_image.mount_point }}/{{ mpfr_version }}"
+  register: mpfr_extract
+
+- name: Extract gmp package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.unarchive:
+    src: "{{ sources_image.mount_point }}/{{ gmp_url | basename }}"
+    dest: "{{ sources_image.mount_point }}"
+    remote_src: true
+    creates: "{{ sources_image.mount_point }}/{{ gmp_version }}"
+  register: gmp_extract
+
+- name: Extract mpc package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.unarchive:
+    src: "{{ sources_image.mount_point }}/{{ mpc_url | basename }}"
+    dest: "{{ sources_image.mount_point }}"
+    remote_src: true
+    creates: "{{ sources_image.mount_point }}/{{ mpc_version }}"
+  register: mpc_extract
+
+- name: Create gcc build directory
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.file:
+    path: "{{ sources_image.mount_point }}/{{ gcc_version }}/build"
+    state: directory
+    mode: "0755"
+
+- name: Create mpfr gcc symbolic directory links
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.file:
+    src: "{{ sources_image.mount_point }}/{{ mpfr_version }}"
+    dest: "{{ sources_image.mount_point }}/{{ gcc_version }}/mpfr"
+    state: link
+
+- name: Create gmp gcc symbolic directory links
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.file:
+    src: "{{ sources_image.mount_point }}/{{ gmp_version }}"
+    dest: "{{ sources_image.mount_point }}/{{ gcc_version }}/gmp"
+    state: link
+
+- name: Create mpc gcc symbolic directory links
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.file:
+    src: "{{ sources_image.mount_point }}/{{ mpc_version }}"
+    dest: "{{ sources_image.mount_point }}/{{ gcc_version }}/mpc"
+    state: link
+
+- name: Configure gcc package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.shell: |
+    ../configure  \
+    --build="{{ arch.stdout }}-automated-linux-gnu" \
+    --host="{{ arch.stdout }}-automated-linux-gnu" \
+    --target="{{ arch.stdout }}-automated-linux-gnu" \
+    --prefix=/usr                                  \
+    --with-build-sysroot=$LFS                      \
+    --enable-default-pie                           \
+    --enable-default-ssp                           \
+    --disable-nls                                  \
+    --disable-multilib                             \
+    --disable-libatomic                            \
+    --disable-libgomp                              \
+    --disable-libquadmath                          \
+    --disable-libsanitizer                         \
+    --disable-libssp                               \
+    --disable-libvtv                               \
+    --enable-languages=c,c++
+  register: result
+  args:
+    chdir: "{{ sources_image.mount_point }}/{{ gcc_version }}/build"
+  environment:
+    PATH: "{{ root_image.mount_point }}/tools/bin:/usr/bin"
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Build gcc package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.shell: |
+    make -j{{ nproc.stdout | int * 2 }}
+  args:
+    chdir: "{{ sources_image.mount_point }}/{{ gcc_version }}/build"
+  environment:
+    PATH: "{{ root_image.mount_point }}/tools/bin:/usr/bin"
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Install gcc package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.shell: |
+    make DESTDIR={{ root_image.mount_point }} install
+  args:
+    chdir: "{{ sources_image.mount_point }}/{{ gcc_version }}/build"
+  environment:
+    PATH: "{{ root_image.mount_point }}/tools/bin:/usr/bin"
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Create cc symbolic link
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.file:
+    src: gcc
+    dest: "{{ root_image.mount_point }}/usr/bin/cc"
+    state: link
+
+- name: Remove gcc directory
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.file:
+    state: absent
+    path: "{{ sources_image.mount_point }}/{{ item }}"
+  with_items:
+    - "{{ gcc_version }}"
+    - "{{ mpfr_version }}"
+    - "{{ gmp_version }}"
+    - "{{ mpc_version }}"
