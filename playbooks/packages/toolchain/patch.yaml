@@ -1,0 +1,61 @@
+# code: language=ansible
+---
+- name: Download patch package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.get_url:
+    url: "{{ patch_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ patch_url | basename }}"
+    mode: "0644"
+
+- name: Extract patch package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.unarchive:
+    src: "{{ sources_image.mount_point }}/{{ patch_url | basename }}"
+    dest: "{{ sources_image.mount_point }}"
+    remote_src: true
+    creates: "{{ sources_image.mount_point }}/{{ patch_version }}"
+
+- name: Configure patch package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.command: |
+    ./configure --prefix=/usr   \
+    --host="{{ arch.stdout }}-automated-linux-gnu" \
+    --build="{{ arch.stdout }}-automated-linux-gnu"
+  register: result
+  args:
+    chdir: "{{ sources_image.mount_point }}/{{ patch_version }}"
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Build patch package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.command: |
+    patch -j{{ nproc.stdout | int * 2 }}
+  args:
+    chdir: "{{ sources_image.mount_point }}/{{ patch_version }}"
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Install patch package
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.command: |
+    patch DESTDIR={{ root_image.mount_point }} install
+  args:
+    chdir: "{{ sources_image.mount_point }}/{{ patch_version }}"
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Remove patch directory
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.file:
+    state: absent
+    path: "{{ sources_image.mount_point }}/{{ patch_version }}"
