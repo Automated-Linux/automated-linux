@@ -66,6 +66,14 @@
     - result.rc != 0
   changed_when: result.rc == 0
 
+- name: Create linux kernel headers destination directory
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.file:
+    path: "{{ root_image.mount_point }}/usr/include"
+    state: directory
+    mode: "0755"
+
 - name: Purge linux kernel headers files
   become: true
   become_user: "{{ automated_user }}"
