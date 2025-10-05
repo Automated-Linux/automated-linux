@@ -27,26 +27,26 @@
         - "{{ download_dir }}"
         - "{{ sources_dir }}"
 
-    # - name: Download packages
-    #   ansible.builtin.get_url:
-    #     url: "{{ item }}"
-    #     dest: "{{ download_dir }}/{{ item | basename }}"
-    #     mode: "0644"
-    #   with_items: "{{ download_result.results }}"
-    #   loop: "{{ lookup('file', filepath) | split('\n') }}"
-    #   vars:
-    #     filepath: "../packages.txt"
+    - name: Download packages
+      ansible.builtin.get_url:
+        url: "{{ item }}"
+        dest: "{{ download_dir }}/{{ item | basename }}"
+        mode: "0644"
+      with_items: "{{ download_result.results }}"
+      loop: "{{ lookup('file', filepath) | split('\n') }}"
+      vars:
+        filepath: "../packages.txt"
 
-    # - name: List contents of download_dir
-    #   ansible.builtin.find:
-    #     path: "{{ download_dir }}"
-    #     patterns: "*.tar.gz,*.tar.xz,*.tar.bz2"
+    - name: List contents of download_dir
+      ansible.builtin.find:
+        path: "{{ download_dir }}"
+        patterns: "*.tar.gz,*.tar.xz,*.tar.bz2"
 
-    #   register: download_dir_contents
+      register: download_dir_contents
 
-    # - name: Extract packages
-    #   ansible.builtin.unarchive:
-    #     src: "{{ item }}"
-    #     dest: "{{ sources_dir }}"
-    #     remote_src: true
-    #   with_items: "{{ download_dir_contents.files | map(attribute='path') }}"
+    - name: Extract packages
+      ansible.builtin.unarchive:
+        src: "{{ item }}"
+        dest: "{{ sources_dir }}"
+        remote_src: true
+      with_items: "{{ download_dir_contents.files | map(attribute='path') }}"

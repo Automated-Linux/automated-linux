@@ -43,7 +43,7 @@
     - name: Create filesystems
       changed_when: false
       ansible.builtin.command:
-        cmd: "mkfs.ext4 {{ item.image }}"
+        cmd: "/usr/sbin/mkfs.ext4 {{ item.image }}"
       with_items:
         - "{{ root_image }}"
         - "{{ sources_image }}"
@@ -72,9 +72,11 @@
 
     - name: Create directories
       become: true
-      become_user: "{{ automated_user }}"
+      # become_user: "{{ automated_user }}"
       ansible.builtin.file:
         path: "{{ item }}"
+        owner: "{{ automated_user }}"
+        group: "{{ automated_group }}"
         state: directory
         mode: "0755"
       with_items:
@@ -82,8 +84,9 @@
 
     - name: Create directory links
       become: true
-      become_user: "{{ automated_user }}"
       ansible.builtin.file:
+        owner: "{{ automated_user }}"
+        group: "{{ automated_group }}"
         src: "{{ item.src }}"
         dest: "{{ item.dest }}"
         state: link

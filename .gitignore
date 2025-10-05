@@ -9,3 +9,4 @@ test.py
 vars.yaml
 packages.txt
 .DS_Store
+.lock
