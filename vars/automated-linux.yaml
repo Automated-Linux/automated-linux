@@ -45,12 +45,12 @@ directories:
   - "{{ root_image.mount_point }}/tools"
   - "{{ root_image.mount_point }}/home/{{ automated_user }}"
 directory_links:
-  - bin:
+  - name: bin
     src: "usr/bin"
     dest: "{{ root_image.mount_point }}/bin"
-  - lib:
+  - name: lib
     src: "usr/lib"
     dest: "{{ root_image.mount_point }}/lib"
-  - sbin:
+  - name: sbin
     src: "usr/sbin"
     dest: "{{ root_image.mount_point }}/sbin"

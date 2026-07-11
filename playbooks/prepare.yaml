@@ -7,7 +7,7 @@
     - ansible.posix
 
   vars_files:
-    - vars/automated-linux.yaml
+    - ../vars/automated-linux.yaml
 
   tasks:
     - name: Install packages

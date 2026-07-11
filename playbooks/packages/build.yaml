@@ -8,7 +8,7 @@
     ansible_chroot_exe: /bin/chroot
     ansible_chroot_path: "{{ root_image.mount_point }}"
   vars_files:
-    - ../vars/automated-linux.yaml
+    - ../../vars/automated-linux.yaml
   tasks:
     - name: Get TARGET environment variable
       changed_when: false
