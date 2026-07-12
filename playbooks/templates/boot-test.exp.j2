@@ -1,0 +1,31 @@
+#!/usr/bin/expect -f
+set timeout 60
+log_user 1
+cd "{{ docker.workspace_host | default(playbook_dir + '/../build-images') }}"
+spawn qemu-system-aarch64 -M virt -cpu host -accel hvf -m {{ qemu.memory }} \
+  -kernel Image \
+  -append "console=ttyAMA0 root=/dev/vda rw quiet loglevel=3" \
+  -drive file=automated-linux-root.img,if=none,id=hd0,format=raw \
+  -device virtio-blk-device,drive=hd0 \
+  -nographic
+
+expect {
+  "login:" { send "root\r" }
+  timeout { puts "BOOT_TEST_FAIL: no login prompt"; exit 1 }
+}
+expect {
+  "Password:" { send "root\r" }
+  timeout { puts "BOOT_TEST_FAIL: no password prompt"; exit 1 }
+}
+expect {
+  "#" { send "echo BOOT_TEST_MARKER; uname -a\r" }
+  "incorrect" { puts "BOOT_TEST_FAIL: login rejected"; exit 1 }
+  timeout { puts "BOOT_TEST_FAIL: no shell prompt"; exit 1 }
+}
+expect {
+  "BOOT_TEST_MARKER" { puts "BOOT_TEST_OK" }
+  timeout { puts "BOOT_TEST_FAIL: command did not run"; exit 1 }
+}
+send "\x01"
+send "x"
+expect eof

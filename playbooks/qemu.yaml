@@ -1,0 +1,77 @@
+# code: language=ansible
+---
+- name: Boot the built system in QEMU
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../vars/automated-linux.yaml
+  vars:
+    qemu_run_test: true
+
+  tasks:
+    - name: Ensure QEMU and e2fsprogs are installed
+      community.general.homebrew:
+        name:
+          - qemu
+          - e2fsprogs
+        state: present
+
+    - name: Locate Homebrew e2fsprogs prefix
+      ansible.builtin.command: brew --prefix e2fsprogs
+      register: e2fsprogs_prefix
+      changed_when: false
+
+    - name: Remove the build container
+      # A loop-mounted image or a stray interactive shell inside the
+      # container can hold the root image open, and QEMU needs exclusive
+      # access to it as a raw block device — concurrent access from both
+      # sides corrupts the ext4 filesystem. Removing the (fully disposable)
+      # container outright is the only reliable way to guarantee every
+      # mount/lock on it is released before booting. docker.yaml recreates
+      # it from scratch on the next run.
+      community.docker.docker_container:
+        name: "{{ docker.container_name }}"
+        state: absent
+
+    - name: Repair the root image filesystem
+      ansible.builtin.command: "{{ e2fsprogs_prefix.stdout }}/sbin/e2fsck -fy {{ playbook_dir }}/../build-images/automated-linux-root.img"
+      register: e2fsck_result
+      changed_when: "'FILE SYSTEM WAS MODIFIED' in e2fsck_result.stdout"
+      failed_when: e2fsck_result.rc > 1
+
+    - name: Render automated boot-test script
+      ansible.builtin.template:
+        src: templates/boot-test.exp.j2
+        dest: "{{ playbook_dir }}/../build-images/boot-test.exp"
+        mode: "0755"
+      when: qemu_run_test | bool
+
+    - name: Run automated boot test (login + shell command over serial console)
+      ansible.builtin.command: expect "{{ playbook_dir }}/../build-images/boot-test.exp"
+      register: boot_test
+      changed_when: false
+      failed_when: "'BOOT_TEST_OK' not in boot_test.stdout"
+      when: qemu_run_test | bool
+
+    - name: Show boot test output
+      ansible.builtin.debug:
+        var: boot_test.stdout_lines
+      when: qemu_run_test | bool
+
+    - name: Print interactive boot commands
+      ansible.builtin.debug:
+        msg:
+          - "Serial console (terminal, login: root / password: root, Ctrl-A X to quit):"
+          - >-
+            cd build-images && qemu-system-aarch64 -M virt -cpu host -accel hvf
+            -m {{ qemu.memory }} -kernel Image -append "console=ttyAMA0 root=/dev/vda rw"
+            -drive file=automated-linux-root.img,if=none,id=hd0,format=raw
+            -device virtio-blk-device,drive=hd0 -nographic
+          - "Graphical window (virtio-gpu framebuffer console on tty1, large font):"
+          - >-
+            cd build-images && qemu-system-aarch64 -M virt -cpu host -accel hvf
+            -m {{ qemu.memory }} -kernel Image -append "console=ttyAMA0 root=/dev/vda rw fbcon=font:TER16x32"
+            -drive file=automated-linux-root.img,if=none,id=hd0,format=raw
+            -device virtio-blk-device,drive=hd0 -device virtio-gpu-pci
+            -device qemu-xhci -device usb-kbd
