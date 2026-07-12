@@ -1,0 +1,6 @@
+# code: language=ansible
+---
+- ansible.builtin.import_playbook: docker.yaml
+- ansible.builtin.import_playbook: prepare.yaml
+- ansible.builtin.import_playbook: packages/toolchain.yaml
+- ansible.builtin.import_playbook: kernel.yaml

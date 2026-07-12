@@ -1,7 +1,7 @@
 # code: language=ansible
 ---
 - name: Create toolchain
-  hosts: "{{ host | default('localhost') }}"
+  hosts: "{{ host | default(docker.container_name) }}"
   gather_facts: false
   become: true
   vars_files:

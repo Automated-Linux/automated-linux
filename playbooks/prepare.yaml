@@ -1,7 +1,7 @@
 # code: language=ansible
 ---
 - name: Automated-Linux Prepare
-  hosts: "{{ host | default('localhost') }}"
+  hosts: "{{ host | default(docker.container_name) }}"
   gather_facts: false
   collections:
     - ansible.posix
@@ -32,21 +32,25 @@
         home: "{{ root_image.mount_point }}/home/{{ automated_user }}"
         createhome: false
 
-    - name: Create images
-      changed_when: false
-      ansible.builtin.command:
-        cmd: "fallocate -l {{ item.size }} {{ item.image }}"
+    - name: Check for existing images
+      ansible.builtin.stat:
+        path: "{{ item.image }}"
+      register: existing_images
       with_items:
         - "{{ root_image }}"
         - "{{ sources_image }}"
 
-    - name: Create filesystems
-      changed_when: false
+    - name: Create images
       ansible.builtin.command:
-        cmd: "/usr/sbin/mkfs.ext4 {{ item.image }}"
-      with_items:
-        - "{{ root_image }}"
-        - "{{ sources_image }}"
+        cmd: "fallocate -l {{ item.item.size }} {{ item.item.image }}"
+      when: not item.stat.exists
+      loop: "{{ existing_images.results }}"
+
+    - name: Create filesystems
+      ansible.builtin.command:
+        cmd: "/usr/sbin/mkfs.ext4 {{ item.item.image }}"
+      when: not item.stat.exists
+      loop: "{{ existing_images.results }}"
 
     - name: Mount images # noqa: syntax-check[unknown-module]
       become: true

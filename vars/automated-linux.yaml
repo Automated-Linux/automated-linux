@@ -2,6 +2,12 @@
 ---
 automated_user: "automated"
 automated_group: "automated"
+docker:
+  container_name: "automated-linux-build"
+  image: "ubuntu:24.04"
+  cpuset_cpus: "0-5"
+  memory: "18g"
+  workspace: "/workspace"
 packages:
   - coreutils
   - bash
@@ -25,13 +31,20 @@ packages:
   - bzip2
   - flex
 root_image:
-  image: "automated-linux-root.img"
+  image: "{{ docker.workspace }}/build-images/automated-linux-root.img"
   size: "10G"
   mount_point: "/mnt/automated-linux"
 sources_image:
-  image: "automated-linux-sources.img"
+  image: "{{ docker.workspace }}/build-images/automated-linux-sources.img"
   size: "20G"
   mount_point: "/mnt/automated-linux/sources"
+kernel:
+  version: "linux-7.1.3"
+  url: "https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.1.3.tar.xz"
+  image: "{{ docker.workspace }}/build-images/Image"
+qemu:
+  memory: "2048"
+  cpus: "4"
 directories:
   - "{{ root_image.mount_point }}/etc"
   - "{{ root_image.mount_point }}/var"

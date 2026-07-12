@@ -10,3 +10,4 @@ vars.yaml
 .DS_Store
 .lock
 playbooks/sources/*
+build-images

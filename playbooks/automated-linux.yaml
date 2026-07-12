@@ -1,52 +1,15 @@
 # code: language=ansible
 ---
-- name: Automated-Linux Playbook
-  hosts: "{{ host | default('localhost') }}"
-  gather_facts: false
-
-  vars:
-    download_dir: "downloads"
-    sources_dir: "sources"
-
-  tasks:
-    - name: Install utils packages
-      become: true
-      ansible.builtin.package:
-        name:
-          - bzip2
-          - tar
-          - gzip
-          - xz-utils
-        state: present
-    - name: Create support directories
-      ansible.builtin.file:
-        path: "{{ item }}"
-        state: directory
-        mode: "0755"
-      with_items:
-        - "{{ download_dir }}"
-        - "{{ sources_dir }}"
-
-    - name: Download packages
-      ansible.builtin.get_url:
-        url: "{{ item }}"
-        dest: "{{ download_dir }}/{{ item | basename }}"
-        mode: "0644"
-      with_items: "{{ download_result.results }}"
-      loop: "{{ lookup('file', filepath) | split('\n') }}"
-      vars:
-        filepath: "../packages.txt"
-
-    - name: List contents of download_dir
-      ansible.builtin.find:
-        path: "{{ download_dir }}"
-        patterns: "*.tar.gz,*.tar.xz,*.tar.bz2"
-
-      register: download_dir_contents
-
-    - name: Extract packages
-      ansible.builtin.unarchive:
-        src: "{{ item }}"
-        dest: "{{ sources_dir }}"
-        remote_src: true
-      with_items: "{{ download_dir_contents.files | map(attribute='path') }}"
+# Single entrypoint for the complete build: provisions the Docker build
+# container, cross-compiles the toolchain, builds the kernel, builds the
+# minimal userland inside a chroot, then boots and verifies the result in
+# QEMU (and tears the container down again). Run from the Mac:
+#
+#   ansible-playbook automated-linux.yaml
+#
+- ansible.builtin.import_playbook: docker.yaml
+- ansible.builtin.import_playbook: prepare.yaml
+- ansible.builtin.import_playbook: packages/toolchain.yaml
+- ansible.builtin.import_playbook: kernel.yaml
+- ansible.builtin.import_playbook: packages/build.yaml
+- ansible.builtin.import_playbook: qemu.yaml

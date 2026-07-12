@@ -1,0 +1,44 @@
+# code: language=ansible
+---
+- name: Provision Docker build container
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  collections:
+    - community.docker
+
+  vars_files:
+    - ../vars/automated-linux.yaml
+
+  tasks:
+    - name: Create build-images directory on host
+      ansible.builtin.file:
+        path: "{{ playbook_dir }}/../build-images"
+        state: directory
+        mode: "0755"
+
+    - name: Create and start build container
+      community.docker.docker_container:
+        name: "{{ docker.container_name }}"
+        image: "{{ docker.image }}"
+        state: started
+        privileged: true
+        restart_policy: unless-stopped
+        init: true
+        command: sleep infinity
+        cpuset_cpus: "{{ docker.cpuset_cpus }}"
+        memory: "{{ docker.memory }}"
+        volumes:
+          - "{{ playbook_dir }}/..:{{ docker.workspace }}"
+
+    - name: Register build container in inventory
+      ansible.builtin.add_host:
+        name: "{{ docker.container_name }}"
+        groups: docker_build
+        ansible_connection: community.docker.docker
+        ansible_python_interpreter: /usr/bin/python3
+
+    - name: Bootstrap Python interpreter and sudo in container
+      ansible.builtin.raw: (which python3 && which sudo) || (apt-get update -qq && apt-get install -y -qq python3 sudo)
+      changed_when: false
+      delegate_to: "{{ docker.container_name }}"
