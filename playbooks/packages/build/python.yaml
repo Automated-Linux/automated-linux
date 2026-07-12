@@ -37,13 +37,16 @@
     # up anything that lost the race.
     make -j{{ nproc.stdout | trim | int }} || make -j1
     make install || (make -j1 && make install)
+    # must run before invoking the freshly built python3 below: its
+    # shared libpython3.13.so.1.0 is not guaranteed to be found by the
+    # dynamic linker until the cache is refreshed.
+    /sbin/ldconfig
     python3 -m ensurepip
     # ensurepip only reliably (re)generates the pip3.13-versioned
     # script; other build systems in this chain expect unversioned
     # pip3/pip on PATH too.
     ln -sfv pip3.13 /usr/bin/pip3
     ln -sfv pip3.13 /usr/bin/pip
-    /sbin/ldconfig
     CHROOT_EOF
   args:
     executable: /bin/bash

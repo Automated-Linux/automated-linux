@@ -182,6 +182,25 @@
         libcap_version: libcap-2.78
         libcap_url: https://www.kernel.org/pub/linux/libs/security/linux-privs/libcap2/libcap-2.78.tar.xz
 
+    - name: Import perl tasks
+      # libxcrypt's own configure needs perl >= 5.14 for build-time
+      # codegen scripts, so this must land before it, below (moved up
+      # from its old, much later position).
+      ansible.builtin.import_tasks: build/perl.yaml
+      vars:
+        perl_version: perl-5.42.2
+        perl_url: https://www.cpan.org/src/5.0/perl-5.42.2.tar.gz
+
+    - name: Import libxcrypt tasks
+      # modern glibc dropped crypt(); shadow's configure needs -lcrypt,
+      # so this must land before shadow, below (previously it didn't,
+      # masked only by root-image state left over from earlier passes
+      # on a machine that had already built it once).
+      ansible.builtin.import_tasks: build/libxcrypt.yaml
+      vars:
+        libxcrypt_version: libxcrypt-4.5.2
+        libxcrypt_url: https://github.com/besser82/libxcrypt/releases/download/v4.5.2/libxcrypt-4.5.2.tar.xz
+
     - name: Import shadow tasks
       ansible.builtin.import_tasks: build/shadow.yaml
       vars:
@@ -284,18 +303,6 @@
       vars:
         procps_version: procps-v4.0.6
         procps_url: https://gitlab.com/procps-ng/procps/-/archive/v4.0.6/procps-v4.0.6.tar.gz
-
-    - name: Import perl tasks
-      ansible.builtin.import_tasks: build/perl.yaml
-      vars:
-        perl_version: perl-5.42.2
-        perl_url: https://www.cpan.org/src/5.0/perl-5.42.2.tar.gz
-
-    - name: Import libxcrypt tasks
-      ansible.builtin.import_tasks: build/libxcrypt.yaml
-      vars:
-        libxcrypt_version: libxcrypt-4.5.2
-        libxcrypt_url: https://github.com/besser82/libxcrypt/releases/download/v4.5.2/libxcrypt-4.5.2.tar.xz
 
     - name: Import Devel-CheckLib tasks
       ansible.builtin.import_tasks: build/devel-checklib.yaml
@@ -483,14 +490,19 @@
         tzdata_version: tzdata2026c
         tzdata_url: https://data.iana.org/time-zones/releases/tzdata2026c.tar.gz
 
+    - name: Import systemd tasks
+      # must land before dbus, below: dbus's own meson build needs
+      # libsystemd.pc (-Dsystemd=enabled) to install its systemd unit
+      # and get auto-enabled; systemd's build has no reverse
+      # dependency on dbus (sd-bus is systemd's own D-Bus client
+      # reimplementation, not a wrapper around libdbus).
+      ansible.builtin.import_tasks: build/systemd.yaml
+      vars:
+        systemd_version: systemd-261.1
+        systemd_url: https://github.com/systemd/systemd/archive/refs/tags/v261.1.tar.gz
+
     - name: Import dbus tasks
       ansible.builtin.import_tasks: build/dbus.yaml
       vars:
         dbus_version: dbus-1.16.2
         dbus_url: https://dbus.freedesktop.org/releases/dbus/dbus-1.16.2.tar.xz
-
-    - name: Import systemd tasks
-      ansible.builtin.import_tasks: build/systemd.yaml
-      vars:
-        systemd_version: systemd-261.1
-        systemd_url: https://github.com/systemd/systemd/archive/refs/tags/v261.1.tar.gz

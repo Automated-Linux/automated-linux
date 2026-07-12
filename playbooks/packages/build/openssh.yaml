@@ -62,6 +62,9 @@
     PermitRootLogin yes
     EOF
 
+    # openssh builds before systemd, above, so this directory does not
+    # necessarily exist yet on a from-scratch build.
+    mkdir -p /usr/lib/systemd/system
     cat > /usr/lib/systemd/system/sshd.service <<'EOF'
     [Unit]
     Description=OpenSSH Daemon
@@ -78,7 +81,12 @@
     [Install]
     WantedBy=multi-user.target
     EOF
-    systemctl enable sshd.service 2>/dev/null || true
+    # systemctl itself does not exist yet either (systemd builds
+    # after openssh); create the enable symlink directly instead of
+    # relying on `systemctl enable`.
+    mkdir -p /etc/systemd/system/multi-user.target.wants
+    ln -sfv /usr/lib/systemd/system/sshd.service \
+      /etc/systemd/system/multi-user.target.wants/sshd.service
     CHROOT_EOF
   args:
     executable: /bin/bash
