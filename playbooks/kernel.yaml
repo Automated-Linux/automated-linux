@@ -1,0 +1,102 @@
+# code: language=ansible
+---
+- name: Build Linux kernel
+  hosts: "{{ host | default(docker.container_name) }}"
+  gather_facts: false
+  become: true
+  vars_files:
+    - ../vars/automated-linux.yaml
+  tasks:
+    - name: Install kernel build dependencies
+      ansible.builtin.package:
+        name:
+          - bison
+          - flex
+          - bc
+          - cpio
+          - kmod
+          - libelf-dev
+          - libssl-dev
+        state: present
+
+    - name: Get nproc
+      changed_when: false
+      ansible.builtin.command: nproc
+      register: nproc
+
+    - name: Download kernel source
+      ansible.builtin.get_url:
+        url: "{{ kernel.url }}"
+        dest: "{{ sources_image.mount_point }}/{{ kernel.url | basename }}"
+        mode: "0644"
+
+    - name: Extract kernel source
+      ansible.builtin.unarchive:
+        src: "{{ sources_image.mount_point }}/{{ kernel.url | basename }}"
+        dest: "{{ sources_image.mount_point }}"
+        remote_src: true
+        creates: "{{ sources_image.mount_point }}/{{ kernel.version }}"
+
+    - name: Generate arm64 defconfig
+      ansible.builtin.command: make defconfig ARCH=arm64
+      args:
+        chdir: "{{ sources_image.mount_point }}/{{ kernel.version }}"
+        creates: "{{ sources_image.mount_point }}/{{ kernel.version }}/.config"
+
+    - name: Enable virtio-gpu framebuffer console and virtio-input support
+      # Built-in (not module): the QEMU `virt` machine exposes virtio-gpu and
+      # virtio-input devices, and with these built in the kernel gets a
+      # graphical framebuffer console with working keyboard input from
+      # early boot with no initramfs/modprobe needed, so `agetty` on tty1
+      # is usable in a QEMU display window (-device virtio-gpu-pci -device
+      # virtio-keyboard-pci), not just the serial console.
+      ansible.builtin.shell: |
+        set -e
+        ./scripts/config --enable CONFIG_DRM
+        ./scripts/config --enable CONFIG_DRM_VIRTIO_GPU
+        ./scripts/config --enable CONFIG_FB
+        ./scripts/config --enable CONFIG_FRAMEBUFFER_CONSOLE
+        ./scripts/config --enable CONFIG_DRM_FBDEV_EMULATION
+        ./scripts/config --enable CONFIG_VIRTIO_INPUT
+        ./scripts/config --enable CONFIG_INPUT_MISC
+        # The virtio-gpu default framebuffer is a large 1280x800, and fbcon
+        # otherwise falls back to the tiny 8x16 VGA font, making console
+        # text look microscopic in the window; build in Terminus 16x32
+        # and select it explicitly via the fbcon=font: kernel cmdline arg.
+        # scripts/config uppercases the whole symbol name it is given,
+        # which breaks this option (a real Kconfig symbol containing a
+        # lowercase x) by targeting a nonexistent CONFIG_FONT_TER16X32 —
+        # edit .config directly instead.
+        ./scripts/config --enable CONFIG_FONTS
+        sed -i "s/# CONFIG_FONT_TER16x32 is not set/CONFIG_FONT_TER16x32=y/" .config
+        ./scripts/config --enable CONFIG_FONT_8x16
+        make ARCH=arm64 olddefconfig
+      args:
+        chdir: "{{ sources_image.mount_point }}/{{ kernel.version }}"
+      register: result
+      changed_when: result.rc == 0
+
+    - name: Build kernel Image and modules
+      ansible.builtin.command: "make -j{{ nproc.stdout | trim | int }} ARCH=arm64 Image modules"
+      args:
+        chdir: "{{ sources_image.mount_point }}/{{ kernel.version }}"
+        creates: "{{ sources_image.mount_point }}/{{ kernel.version }}/arch/arm64/boot/Image"
+
+    - name: Install kernel modules into root image
+      ansible.builtin.command: "make ARCH=arm64 INSTALL_MOD_PATH={{ root_image.mount_point }} modules_install"
+      args:
+        chdir: "{{ sources_image.mount_point }}/{{ kernel.version }}"
+      register: result
+      changed_when: result.rc == 0
+
+    - name: Copy kernel Image to build-images
+      ansible.builtin.copy:
+        src: "{{ sources_image.mount_point }}/{{ kernel.version }}/arch/arm64/boot/Image"
+        dest: "{{ kernel.image }}"
+        remote_src: true
+        mode: "0644"
+
+    - name: Remove kernel source directory
+      ansible.builtin.file:
+        state: absent
+        path: "{{ sources_image.mount_point }}/{{ kernel.version }}"
