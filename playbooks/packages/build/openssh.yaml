@@ -1,0 +1,93 @@
+# code: language=ansible
+---
+- name: Download openssh package
+  ansible.builtin.get_url:
+    url: "{{ openssh_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ openssh_url | basename }}"
+    mode: "0644"
+  register: get_url_result
+  retries: 5
+  delay: 10
+  until: get_url_result is succeeded
+
+- name: Extract openssh package
+  ansible.builtin.shell: |
+    chroot {{ root_image.mount_point }} /bin/bash -c '
+    [ -d /sources/{{ openssh_version }} ] || tar xf /sources/{{ openssh_url | basename }} -C /sources
+    '
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Configure, build and install openssh
+  ansible.builtin.shell: |
+    set -e
+    chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
+    set -e
+    cd /sources/{{ openssh_version }}
+    install -v -m700 -d /var/lib/sshd
+    chown -v root:sys /var/lib/sshd
+    chmod -v 700 /var/lib/sshd
+    getent group sshd >/dev/null || groupadd -g 50 sshd
+    getent passwd sshd >/dev/null || useradd -c "sshd PrivSep" -d /var/lib/sshd -g sshd -s /usr/bin/false -u 50 sshd
+    ./configure --prefix=/usr \
+      --sysconfdir=/etc/ssh \
+      --with-md5-passwords \
+      --with-privsep-path=/var/lib/sshd \
+      --with-default-path=/usr/bin \
+      --with-superuser-path=/usr/sbin:/usr/bin \
+      --with-pid-dir=/run
+    make -j{{ nproc.stdout | trim | int }}
+    make install
+    CHROOT_EOF
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Install sshd systemd unit and enable it
+  ansible.builtin.shell: |
+    set -e
+    chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
+    set -e
+    # root is effectively the only usable account on this minimal
+    # system (see essential-files.yaml); OpenSSH default-disallows
+    # root password auth (prohibit-password), so allow it explicitly.
+    cat >> /etc/ssh/sshd_config <<'EOF'
+    PermitRootLogin yes
+    EOF
+
+    cat > /usr/lib/systemd/system/sshd.service <<'EOF'
+    [Unit]
+    Description=OpenSSH Daemon
+    After=network.target
+
+    [Service]
+    ExecStartPre=/usr/bin/ssh-keygen -A
+    ExecStart=/usr/sbin/sshd -D
+    ExecReload=/bin/kill -HUP $MAINPID
+    KillMode=process
+    Restart=on-failure
+    RestartSec=5s
+
+    [Install]
+    WantedBy=multi-user.target
+    EOF
+    systemctl enable sshd.service 2>/dev/null || true
+    CHROOT_EOF
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Remove openssh source directory
+  ansible.builtin.file:
+    state: absent
+    path: "{{ sources_image.mount_point }}/{{ openssh_version }}"

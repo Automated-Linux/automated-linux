@@ -345,6 +345,12 @@
         openssl_version: openssl-3.6.3
         openssl_url: https://github.com/openssl/openssl/releases/download/openssl-3.6.3/openssl-3.6.3.tar.gz
 
+    - name: Import openssh tasks
+      ansible.builtin.import_tasks: build/openssh.yaml
+      vars:
+        openssh_version: openssh-10.4p1
+        openssh_url: https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-10.4p1.tar.gz
+
     - name: Import kmod tasks
       ansible.builtin.import_tasks: build/kmod.yaml
       vars:
