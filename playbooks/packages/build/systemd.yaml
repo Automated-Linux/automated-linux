@@ -1,0 +1,145 @@
+# code: language=ansible
+---
+- name: Download systemd package
+  ansible.builtin.get_url:
+    url: "{{ systemd_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ systemd_url | basename }}"
+    mode: "0644"
+  register: get_url_result
+  retries: 5
+  delay: 10
+  until: get_url_result is succeeded
+
+- name: Extract systemd package
+  ansible.builtin.shell: |
+    chroot {{ root_image.mount_point }} /bin/bash -c '
+    [ -d /sources/{{ systemd_version }} ] || tar xf /sources/{{ systemd_url | basename }} -C /sources
+    '
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Configure, build and install systemd
+  ansible.builtin.shell: |
+    set -e
+    chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
+    set -e
+    cd /sources/{{ systemd_version }}
+    mkdir -p build
+    cd build
+    meson setup \
+      --prefix=/usr \
+      --buildtype=release \
+      -Dmode=release \
+      -Ddev-kvm-mode=0660 \
+      -Dlink-udev-shared=true \
+      -Dlink-systemctl-shared=true \
+      -Dfirst-boot-full-preset=true \
+      -Dsysusers=true \
+      -Drpmmacrosdir=no \
+      -Dhomed=disabled \
+      -Duserdb=false \
+      -Dman=disabled \
+      -Dhtml=disabled \
+      -Dbootloader=disabled \
+      -Dukify=disabled \
+      ..
+    ninja
+    # remove the old custom (pre-systemd) init script so meson can
+    # place its own symlink at /usr/sbin/init
+    rm -f /sbin/init /usr/sbin/init
+    ninja install
+    CHROOT_EOF
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Remove systemd source directory
+  ansible.builtin.file:
+    state: absent
+    path: "{{ sources_image.mount_point }}/{{ systemd_version }}"
+
+- name: Point /sbin/init at systemd and configure essentials
+  ansible.builtin.shell: |
+    set -e
+    chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
+    set -e
+    ln -sfv /usr/lib/systemd/systemd /sbin/init
+
+    # systemd-sysusers.service skips itself on boot based on a
+    # ConditionNeedsUpdate timestamp heuristic that never trips in
+    # this image; create the systemd-* system users/groups once now
+    # so services like systemd-journald.socket have them regardless.
+    systemd-sysusers
+
+    cat > /etc/os-release <<'EOF'
+    NAME="Automated Linux"
+    ID=automated-linux
+    PRETTY_NAME="Automated Linux"
+    EOF
+
+    cat > /etc/hostname <<'EOF'
+    automated-linux
+    EOF
+
+    cat > /etc/fstab <<'EOF'
+    # file system  mount-point  type   options              dump  fsck order
+    /dev/vda       /            ext4   defaults             1     1
+    proc           /proc        proc   nosuid,noexec,nodev  0     0
+    sysfs          /sys         sysfs  nosuid,noexec,nodev  0     0
+    devpts         /dev/pts     devpts gid=5,mode=620        0     0
+    tmpfs          /run         tmpfs  defaults             0     0
+    devtmpfs       /dev         devtmpfs mode=0755,nosuid    0     0
+    EOF
+
+    systemd-machine-id-setup
+    systemctl set-default multi-user.target
+
+    mkdir -p /etc/systemd/system/getty.target.wants
+    ln -sfv /usr/lib/systemd/system/serial-getty@.service \
+      /etc/systemd/system/getty.target.wants/serial-getty@ttyAMA0.service
+    ln -sfv /usr/lib/systemd/system/getty@.service \
+      /etc/systemd/system/getty.target.wants/getty@tty1.service
+
+    systemctl enable dbus.service 2>/dev/null || true
+    CHROOT_EOF
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Configure systemd-networkd for DHCP network configuration
+  # native systemd networking (no netplan/NetworkManager): networkd
+  # brings interfaces up via DHCP, resolved handles DNS from that
+  # DHCP lease via the stub-resolv.conf symlink below.
+  ansible.builtin.shell: |
+    set -e
+    chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
+    set -e
+    mkdir -p /etc/systemd/network
+    cat > /etc/systemd/network/20-wired-dhcp.network <<'EOF'
+    [Match]
+    Name=!lo
+
+    [Network]
+    DHCP=yes
+    EOF
+
+    ln -sfv /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
+
+    systemctl enable systemd-networkd.service systemd-resolved.service 2>/dev/null || true
+    CHROOT_EOF
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0

@@ -1,29 +1,31 @@
+# code: language=ansible
 ---
-- name: Create toolchain
-  connection: community.general.chroot
-  hosts: "{{ host | default('localhost') }}"
+# Builds the full userland inside the target root image via `chroot`, run
+# as a plain command through the same community.docker connection as
+# prepare.yaml/toolchain.yaml — no nested ansible-playbook and no
+# community.general.chroot connection plugin required. Every package is
+# built natively (not cross-compiled) inside the chroot with the
+# gcc/binutils/glibc already produced by packages/toolchain.yaml and
+# installed into {{ root_image.mount_point }}/usr, matching LFS Chapter 8
+# ("Installing Basic System Software") build order. Packages already built
+# as LFS Chapter 6 "temporary tools" by packages/toolchain.yaml (binutils,
+# gcc, glibc, gmp, mpfr, mpc, libstdc++, m4, ncurses, bash, coreutils,
+# diffutils, file, findutils, gawk, grep, gzip, make, patch, sed, tar, xz)
+# are not rebuilt here. systemd is wired up as the final PID 1.
+- name: Build userland inside chroot
+  hosts: "{{ host | default(docker.container_name) }}"
   gather_facts: false
   become: true
-  vars:
-    ansible_chroot_exe: /bin/chroot
-    ansible_chroot_path: "{{ root_image.mount_point }}"
   vars_files:
     - ../../vars/automated-linux.yaml
-  tasks:
-    - name: Get TARGET environment variable
-      changed_when: false
-      ansible.builtin.command: |
-        uname -m
-      register: arch
 
-    - name: Get TARGET environment variable
+  tasks:
+    - name: Get nproc
       changed_when: false
-      ansible.builtin.command: |
-        nproc
+      ansible.builtin.command: nproc
       register: nproc
 
     - name: mount dev # noqa: syntax-check[unknown-module]
-      become: true
       ansible.posix.mount:
         path: "{{ root_image.mount_point }}/dev"
         src: /dev
@@ -32,7 +34,6 @@
         fstype: none
 
     - name: Mount dev pts # noqa: syntax-check[unknown-module]
-      become: true
       ansible.posix.mount:
         path: "{{ root_image.mount_point }}/dev/pts"
         src: "devpts"
@@ -41,7 +42,6 @@
         opts: gid=5,mode=0620
 
     - name: Mount dev shm # noqa: syntax-check[unknown-module]
-      become: true
       ansible.posix.mount:
         path: "{{ root_image.mount_point }}/dev/shm"
         src: "tmpfs"
@@ -50,7 +50,6 @@
         opts: nosuid,nodev
 
     - name: Mount proc # noqa: syntax-check[unknown-module]
-      become: true
       ansible.posix.mount:
         path: "{{ root_image.mount_point }}/proc"
         src: "proc"
@@ -58,7 +57,6 @@
         state: "mounted"
 
     - name: Mount sys # noqa: syntax-check[unknown-module]
-      become: true
       ansible.posix.mount:
         path: "{{ root_image.mount_point }}/sys"
         src: "sysfs"
@@ -66,9 +64,427 @@
         state: "mounted"
 
     - name: Mount run # noqa: syntax-check[unknown-module]
-      become: true
       ansible.posix.mount:
         path: "{{ root_image.mount_point }}/run"
         src: "tmpfs"
         fstype: "tmpfs"
         state: "mounted"
+
+    - name: Verify chroot environment is usable
+      ansible.builtin.command: "chroot {{ root_image.mount_point }} /usr/bin/gcc --version"
+      changed_when: false
+      register: gcc_check
+
+    - name: Show chroot gcc version
+      ansible.builtin.debug:
+        var: gcc_check.stdout_lines
+
+    - name: Import essential files tasks
+      ansible.builtin.import_tasks: build/essential-files.yaml
+
+    - name: Import locales tasks
+      ansible.builtin.import_tasks: build/locales.yaml
+
+    - name: Import man-pages tasks
+      ansible.builtin.import_tasks: build/man-pages.yaml
+      vars:
+        man_pages_version: man-pages-6.18
+        man_pages_url: https://www.kernel.org/pub/linux/docs/man-pages/man-pages-6.18.tar.xz
+
+    - name: Import iana-etc tasks
+      ansible.builtin.import_tasks: build/iana-etc.yaml
+      vars:
+        iana_etc_version: iana-etc-20260617
+        iana_etc_url: https://github.com/Mic92/iana-etc/releases/download/20260617/iana-etc-20260617.tar.gz
+
+    - name: Import zlib tasks
+      ansible.builtin.import_tasks: build/zlib.yaml
+      vars:
+        zlib_version: zlib-1.3.2
+        zlib_url: https://zlib.net/fossils/zlib-1.3.2.tar.gz
+
+    - name: Import bzip2 tasks
+      ansible.builtin.import_tasks: build/bzip2.yaml
+      vars:
+        bzip2_version: bzip2-1.0.8
+        bzip2_url: https://www.sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz
+
+    - name: Import zstd tasks
+      ansible.builtin.import_tasks: build/zstd.yaml
+      vars:
+        zstd_version: zstd-1.5.7
+        zstd_url: https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-1.5.7.tar.gz
+
+    - name: Import ncurses tasks
+      # native rebuild with pkg-config/tinfo files, replacing the
+      # cross-compiled temporary-tools ncurses from packages/toolchain.yaml
+      ansible.builtin.import_tasks: build/ncurses.yaml
+      vars:
+        ncurses_version: ncurses-6.5
+        ncurses_url: https://ftpmirror.gnu.org/gnu/ncurses/ncurses-6.5.tar.gz
+
+    - name: Import readline tasks
+      ansible.builtin.import_tasks: build/readline.yaml
+      vars:
+        readline_version: readline-8.3
+        readline_url: https://ftpmirror.gnu.org/gnu/readline/readline-8.3.tar.gz
+
+    - name: Import bc tasks
+      ansible.builtin.import_tasks: build/bc.yaml
+      vars:
+        bc_version: bc-7.1.0
+        bc_url: https://github.com/gavinhoward/bc/releases/download/7.1.0/bc-7.1.0.tar.xz
+
+    - name: Import flex tasks
+      ansible.builtin.import_tasks: build/flex.yaml
+      vars:
+        flex_version: flex-2.6.4
+        flex_url: https://github.com/westes/flex/releases/download/v2.6.4/flex-2.6.4.tar.gz
+
+    - name: Import tcl tasks
+      ansible.builtin.import_tasks: build/tcl.yaml
+      vars:
+        tcl_version: tcl9.0.4
+        tcl_url: http://prdownloads.sourceforge.net/tcl/tcl9.0.4-src.tar.gz
+
+    # expect-5.45.4 predates Tcl 9 and needs deeper patching than macro
+    # shims to build against it (CONST/TCL_VARARGS/_ANSI_ARGS_ removed in
+    # Tcl 9); skipped as non-essential (only used interactively and by
+    # dejagnu's test-runner, not by anything in this build or at boot).
+
+    - name: Import dejagnu tasks
+      ansible.builtin.import_tasks: build/dejagnu.yaml
+      vars:
+        dejagnu_version: dejagnu-1.6.3
+        dejagnu_url: https://ftpmirror.gnu.org/gnu/dejagnu/dejagnu-1.6.3.tar.gz
+
+    - name: Import pkgconf tasks
+      ansible.builtin.import_tasks: build/pkgconf.yaml
+      vars:
+        pkgconf_version: pkgconf-3.0.0
+        pkgconf_url: https://distfiles.ariadne.space/pkgconf/pkgconf-3.0.0.tar.xz
+
+    - name: Import attr tasks
+      ansible.builtin.import_tasks: build/attr.yaml
+      vars:
+        attr_version: attr-2.6.0
+        attr_url: https://download.savannah.gnu.org/releases/attr/attr-2.6.0.tar.gz
+
+    - name: Import acl tasks
+      ansible.builtin.import_tasks: build/acl.yaml
+      vars:
+        acl_version: acl-2.4.0
+        acl_url: https://download.savannah.gnu.org/releases/acl/acl-2.4.0.tar.xz
+
+    - name: Import libcap tasks
+      ansible.builtin.import_tasks: build/libcap.yaml
+      vars:
+        libcap_version: libcap-2.78
+        libcap_url: https://www.kernel.org/pub/linux/libs/security/linux-privs/libcap2/libcap-2.78.tar.xz
+
+    - name: Import shadow tasks
+      ansible.builtin.import_tasks: build/shadow.yaml
+      vars:
+        shadow_version: shadow-4.19.4
+        shadow_url: https://github.com/shadow-maint/shadow/releases/download/4.19.4/shadow-4.19.4.tar.xz
+
+    - name: Import libtool tasks
+      ansible.builtin.import_tasks: build/libtool.yaml
+      vars:
+        libtool_version: libtool-2.5.4
+        libtool_url: https://ftpmirror.gnu.org/gnu/libtool/libtool-2.5.4.tar.xz
+
+    - name: Import autoconf tasks
+      ansible.builtin.import_tasks: build/autoconf.yaml
+      vars:
+        autoconf_version: autoconf-2.73
+        autoconf_url: https://ftpmirror.gnu.org/gnu/autoconf/autoconf-2.73.tar.xz
+
+    - name: Import automake tasks
+      ansible.builtin.import_tasks: build/automake.yaml
+      vars:
+        automake_version: automake-1.18.1
+        automake_url: https://ftpmirror.gnu.org/gnu/automake/automake-1.18.1.tar.xz
+
+    - name: Import gettext tasks
+      ansible.builtin.import_tasks: build/gettext.yaml
+      vars:
+        gettext_version: gettext-1.0
+        gettext_url: https://ftpmirror.gnu.org/gnu/gettext/gettext-1.0.tar.xz
+
+    - name: Import psmisc tasks
+      # needs autopoint (from gettext, above) for ./autogen.sh
+      ansible.builtin.import_tasks: build/psmisc.yaml
+      vars:
+        psmisc_version: psmisc-v23.7
+        psmisc_url: https://gitlab.com/psmisc/psmisc/-/archive/v23.7/psmisc-v23.7.tar.gz
+
+    - name: Import bison tasks
+      ansible.builtin.import_tasks: build/bison.yaml
+      vars:
+        bison_version: bison-3.8.2
+        bison_url: https://ftpmirror.gnu.org/gnu/bison/bison-3.8.2.tar.xz
+
+    - name: Import gdbm tasks
+      ansible.builtin.import_tasks: build/gdbm.yaml
+      vars:
+        gdbm_version: gdbm-1.26
+        gdbm_url: https://ftpmirror.gnu.org/gnu/gdbm/gdbm-1.26.tar.gz
+
+    - name: Import gperf tasks
+      ansible.builtin.import_tasks: build/gperf.yaml
+      vars:
+        gperf_version: gperf-3.3
+        gperf_url: https://ftpmirror.gnu.org/gnu/gperf/gperf-3.3.tar.gz
+
+    - name: Import expat tasks
+      ansible.builtin.import_tasks: build/expat.yaml
+      vars:
+        expat_version: expat-2.8.2
+        expat_url: https://github.com/libexpat/libexpat/releases/download/R_2_8_2/expat-2.8.2.tar.xz
+
+    - name: Import texinfo tasks
+      # provides makeinfo, needed by inetutils' ./bootstrap, below
+      ansible.builtin.import_tasks: build/texinfo.yaml
+      vars:
+        texinfo_version: texinfo-7.3
+        texinfo_url: https://ftpmirror.gnu.org/gnu/texinfo/texinfo-7.3.tar.xz
+
+    - name: Import help2man tasks
+      # needed by inetutils' ./bootstrap, below
+      ansible.builtin.import_tasks: build/help2man.yaml
+      vars:
+        help2man_version: help2man-1.49.3
+        help2man_url: https://ftpmirror.gnu.org/gnu/help2man/help2man-1.49.3.tar.xz
+
+    - name: Import inetutils tasks
+      ansible.builtin.import_tasks: build/inetutils.yaml
+      vars:
+        inetutils_version: inetutils-v2.8
+        inetutils_url: https://ftpmirror.gnu.org/gnu/inetutils/inetutils-v2.8-src.tar.gz
+        gnulib_version: gnulib-master
+        gnulib_url: https://github.com/coreutils/gnulib/archive/refs/heads/master.tar.gz
+
+    - name: Import less tasks
+      ansible.builtin.import_tasks: build/less.yaml
+      vars:
+        less_version: less-704
+        less_url: https://www.greenwoodsoftware.com/less/less-704.tar.gz
+
+    - name: Import util-linux tasks
+      ansible.builtin.import_tasks: build/util-linux.yaml
+      vars:
+        util_linux_version: util-linux-2.42.2
+        util_linux_url: https://www.kernel.org/pub/linux/utils/util-linux/v2.42/util-linux-2.42.2.tar.xz
+
+    - name: Import procps tasks
+      # provides ps, top, free, uptime, etc; --disable-kill avoids
+      # clashing with util-linux's kill, above
+      ansible.builtin.import_tasks: build/procps.yaml
+      vars:
+        procps_version: procps-v4.0.6
+        procps_url: https://gitlab.com/procps-ng/procps/-/archive/v4.0.6/procps-v4.0.6.tar.gz
+
+    - name: Import perl tasks
+      ansible.builtin.import_tasks: build/perl.yaml
+      vars:
+        perl_version: perl-5.42.2
+        perl_url: https://www.cpan.org/src/5.0/perl-5.42.2.tar.gz
+
+    - name: Import libxcrypt tasks
+      ansible.builtin.import_tasks: build/libxcrypt.yaml
+      vars:
+        libxcrypt_version: libxcrypt-4.5.2
+        libxcrypt_url: https://github.com/besser82/libxcrypt/releases/download/v4.5.2/libxcrypt-4.5.2.tar.xz
+
+    - name: Import Devel-CheckLib tasks
+      ansible.builtin.import_tasks: build/devel-checklib.yaml
+      vars:
+        devel_checklib_version: Devel-CheckLib-1.16
+        devel_checklib_url: https://cpan.metacpan.org/authors/id/M/MA/MATTN/Devel-CheckLib-1.16.tar.gz
+
+    - name: Import File-ShareDir-Install tasks
+      ansible.builtin.import_tasks: build/filesharedir-install.yaml
+      vars:
+        filesharedir_install_version: File-ShareDir-Install-0.14
+        filesharedir_install_url: https://cpan.metacpan.org/authors/id/E/ET/ETHER/File-ShareDir-Install-0.14.tar.gz
+
+    - name: Import Class-Inspector tasks
+      # dependency of File::ShareDir, below
+      ansible.builtin.import_tasks: build/class-inspector.yaml
+      vars:
+        class_inspector_version: Class-Inspector-1.36
+        class_inspector_url: https://cpan.metacpan.org/authors/id/P/PL/PLICEASE/Class-Inspector-1.36.tar.gz
+
+    - name: Import File-ShareDir tasks
+      # runtime dependency of XML::Parser, below
+      ansible.builtin.import_tasks: build/filesharedir.yaml
+      vars:
+        filesharedir_version: File-ShareDir-1.118
+        filesharedir_url: https://cpan.metacpan.org/authors/id/R/RE/REHSACK/File-ShareDir-1.118.tar.gz
+
+    - name: Import XML-Parser tasks
+      ansible.builtin.import_tasks: build/xml-parser.yaml
+      vars:
+        xml_parser_version: XML-Parser-2.59
+        xml_parser_url: https://cpan.metacpan.org/authors/id/T/TO/TODDR/XML-Parser-2.59.tar.gz
+
+    - name: Import intltool tasks
+      ansible.builtin.import_tasks: build/intltool.yaml
+      vars:
+        intltool_version: intltool-0.51.0
+        intltool_url: https://launchpad.net/intltool/trunk/0.51.0/+download/intltool-0.51.0.tar.gz
+
+    - name: Import openssl tasks
+      ansible.builtin.import_tasks: build/openssl.yaml
+      vars:
+        # 4.0.x dropped the legacy TLSv1_method()/TLSv1_1_method() symbols
+        # that CPython 3.13's _ssl module still references, breaking the
+        # ssl module at import time; 3.6.x is the latest release that
+        # still ships them.
+        openssl_version: openssl-3.6.3
+        openssl_url: https://github.com/openssl/openssl/releases/download/openssl-3.6.3/openssl-3.6.3.tar.gz
+
+    - name: Import kmod tasks
+      ansible.builtin.import_tasks: build/kmod.yaml
+      vars:
+        kmod_version: kmod-34.2
+        kmod_url: https://www.kernel.org/pub/linux/utils/kernel/kmod/kmod-34.2.tar.xz
+
+    - name: Import elfutils tasks
+      ansible.builtin.import_tasks: build/elfutils.yaml
+      vars:
+        elfutils_version: elfutils-0.195
+        elfutils_url: https://sourceware.org/elfutils/ftp/0.195/elfutils-0.195.tar.bz2
+
+    - name: Import libffi tasks
+      ansible.builtin.import_tasks: build/libffi.yaml
+      vars:
+        libffi_version: libffi-3.7.1
+        libffi_url: https://github.com/libffi/libffi/releases/download/v3.7.1/libffi-3.7.1.tar.gz
+
+    - name: Import python tasks
+      ansible.builtin.import_tasks: build/python.yaml
+      vars:
+        python_version: Python-3.13.14
+        python_url: https://www.python.org/ftp/python/3.13.14/Python-3.13.14.tar.xz
+
+    - name: Import flit-core tasks
+      ansible.builtin.import_tasks: build/flit-core.yaml
+      vars:
+        flit_core_version: flit_core-3.12.0
+        flit_core_url: https://pypi.org/packages/source/f/flit-core/flit_core-3.12.0.tar.gz
+
+    - name: Import packaging tasks
+      # needed for wheel's build metadata step, below
+      ansible.builtin.import_tasks: build/packaging.yaml
+      vars:
+        packaging_url: https://files.pythonhosted.org/packages/df/b2/87e62e8c3e2f4b32e5fe99e0b86d576da1312593b39f47d8ceef365e95ed/packaging-26.2-py3-none-any.whl
+
+    - name: Import wheel tasks
+      ansible.builtin.import_tasks: build/wheel.yaml
+      vars:
+        wheel_version: wheel-0.47.0
+        wheel_url: https://pypi.org/packages/source/w/wheel/wheel-0.47.0.tar.gz
+
+    - name: Import setuptools tasks
+      ansible.builtin.import_tasks: build/setuptools.yaml
+      vars:
+        setuptools_version: setuptools-83.0.0
+        setuptools_url: https://pypi.org/packages/source/s/setuptools/setuptools-83.0.0.tar.gz
+
+    - name: Import ninja tasks
+      ansible.builtin.import_tasks: build/ninja.yaml
+      vars:
+        ninja_version: ninja-1.13.2
+        ninja_url: https://github.com/ninja-build/ninja/archive/v1.13.2/ninja-1.13.2.tar.gz
+
+    - name: Import meson tasks
+      ansible.builtin.import_tasks: build/meson.yaml
+      vars:
+        meson_version: meson-1.11.1
+        meson_url: https://github.com/mesonbuild/meson/releases/download/1.11.1/meson-1.11.1.tar.gz
+
+    - name: Import check tasks
+      ansible.builtin.import_tasks: build/check.yaml
+      vars:
+        check_version: check-0.15.2
+        check_url: https://github.com/libcheck/check/releases/download/0.15.2/check-0.15.2.tar.gz
+
+    - name: Import groff tasks
+      ansible.builtin.import_tasks: build/groff.yaml
+      vars:
+        groff_version: groff-1.24.1
+        groff_url: https://ftpmirror.gnu.org/gnu/groff/groff-1.24.1.tar.gz
+
+    - name: Import grub tasks
+      ansible.builtin.import_tasks: build/grub.yaml
+      vars:
+        grub_version: grub-2.14
+        grub_url: https://ftpmirror.gnu.org/gnu/grub/grub-2.14.tar.xz
+
+    - name: Import iproute2 tasks
+      ansible.builtin.import_tasks: build/iproute2.yaml
+      vars:
+        iproute2_version: iproute2-7.1.0
+        iproute2_url: https://www.kernel.org/pub/linux/utils/net/iproute2/iproute2-7.1.0.tar.xz
+
+    - name: Import kbd tasks
+      ansible.builtin.import_tasks: build/kbd.yaml
+      vars:
+        kbd_version: kbd-2.10.0
+        kbd_url: https://cdn.kernel.org/pub/linux/utils/kbd/kbd-2.10.0.tar.xz
+
+    - name: Import libpipeline tasks
+      ansible.builtin.import_tasks: build/libpipeline.yaml
+      vars:
+        libpipeline_version: libpipeline-1.5.8
+        libpipeline_url: https://download.savannah.gnu.org/releases/libpipeline/libpipeline-1.5.8.tar.gz
+
+    - name: Import man-db tasks
+      ansible.builtin.import_tasks: build/man-db.yaml
+      vars:
+        man_db_version: man-db-2.13.1
+        man_db_url: https://download.savannah.gnu.org/releases/man-db/man-db-2.13.1.tar.xz
+
+    - name: Import vim tasks
+      ansible.builtin.import_tasks: build/vim.yaml
+      vars:
+        vim_version: vim-9.2.0782
+        vim_url: https://github.com/vim/vim/archive/v9.2.0782/vim-9.2.0782.tar.gz
+
+    - name: Import markupsafe tasks
+      ansible.builtin.import_tasks: build/markupsafe.yaml
+      vars:
+        markupsafe_version: markupsafe-3.0.3
+        markupsafe_url: https://github.com/pallets/markupsafe/releases/download/3.0.3/markupsafe-3.0.3.tar.gz
+
+    - name: Import jinja2 tasks
+      ansible.builtin.import_tasks: build/jinja2.yaml
+      vars:
+        jinja2_version: jinja2-3.1.6
+        jinja2_url: https://pypi.org/packages/source/J/Jinja2/jinja2-3.1.6.tar.gz
+
+    - name: Import e2fsprogs tasks
+      ansible.builtin.import_tasks: build/e2fsprogs.yaml
+      vars:
+        e2fsprogs_version: e2fsprogs-1.47.4
+        e2fsprogs_url: "https://www.kernel.org/pub//linux/kernel/people/tytso/e2fsprogs/v1.47.4/e2fsprogs-1.47.4.tar.xz"
+
+    - name: Import tzdata tasks
+      ansible.builtin.import_tasks: build/tzdata.yaml
+      vars:
+        tzdata_version: tzdata2026c
+        tzdata_url: https://data.iana.org/time-zones/releases/tzdata2026c.tar.gz
+
+    - name: Import dbus tasks
+      ansible.builtin.import_tasks: build/dbus.yaml
+      vars:
+        dbus_version: dbus-1.16.2
+        dbus_url: https://dbus.freedesktop.org/releases/dbus/dbus-1.16.2.tar.xz
+
+    - name: Import systemd tasks
+      ansible.builtin.import_tasks: build/systemd.yaml
+      vars:
+        systemd_version: systemd-261.1
+        systemd_url: https://github.com/systemd/systemd/archive/refs/tags/v261.1.tar.gz

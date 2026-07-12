@@ -1,0 +1,47 @@
+# code: language=ansible
+---
+- name: Download kbd package
+  ansible.builtin.get_url:
+    url: "{{ kbd_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ kbd_url | basename }}"
+    mode: "0644"
+  register: get_url_result
+  retries: 5
+  delay: 10
+  until: get_url_result is succeeded
+
+- name: Extract kbd package
+  ansible.builtin.shell: |
+    chroot {{ root_image.mount_point }} /bin/bash -c '
+    [ -d /sources/{{ kbd_version }} ] || tar xf /sources/{{ kbd_url | basename }} -C /sources
+    '
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Configure, build and install kbd
+  ansible.builtin.shell: |
+    set -e
+    chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
+    set -e
+    cd /sources/{{ kbd_version }}
+    sed -i '/RESIZECONS_PROGS=/s/yes/no/' configure
+    sed -i 's/resizecons.8 //' docs/man/man8/Makefile.in
+    ./configure --prefix=/usr --disable-vlock
+    make -j{{ nproc.stdout | trim | int }}
+    make install
+    CHROOT_EOF
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Remove kbd source directory
+  ansible.builtin.file:
+    state: absent
+    path: "{{ sources_image.mount_point }}/{{ kbd_version }}"

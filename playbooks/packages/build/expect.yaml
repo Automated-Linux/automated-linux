@@ -1,0 +1,54 @@
+# code: language=ansible
+---
+- name: Download expect package
+  ansible.builtin.get_url:
+    url: "{{ expect_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ expect_url | basename }}"
+    mode: "0644"
+  register: get_url_result
+  retries: 5
+  delay: 10
+  until: get_url_result is succeeded
+
+- name: Extract expect package
+  ansible.builtin.shell: |
+    chroot {{ root_image.mount_point }} /bin/bash -c '
+    [ -d /sources/{{ expect_version }} ] || tar xf /sources/{{ expect_url | basename }} -C /sources
+    '
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Configure, build and install expect
+  ansible.builtin.shell: |
+    set -e
+    chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
+    set -e
+    cd /sources/{{ expect_version }}
+    ln -sfv pty_termios.c pty_.c
+    sed -i '1i #define _ANSI_ARGS_(x) x\n#define CONST const\n#define VOID void\n#define TCL_VARARGS(type, name) (type name, ...)\n#define TCL_VARARGS_DEF(type, name) (type name, ...)\n#define TCL_VARARGS_START(type, name, list) (va_start(list, name), name)' expect_tcl.h
+    ./configure --prefix=/usr \
+      --build="$(uname -m)-unknown-linux-gnu" \
+      --host="$(uname -m)-unknown-linux-gnu" \
+      --with-tcl=/usr/lib \
+      --enable-shared \
+      --mandir=/usr/share/man \
+      --with-tclinclude=/usr/include
+    make -j{{ nproc.stdout | trim | int }}
+    make install
+    ln -svf expect5.45.4/libexpect5.45.4.so /usr/lib
+    CHROOT_EOF
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Remove expect source directory
+  ansible.builtin.file:
+    state: absent
+    path: "{{ sources_image.mount_point }}/{{ expect_version }}"

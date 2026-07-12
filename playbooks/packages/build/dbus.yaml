@@ -1,0 +1,52 @@
+# code: language=ansible
+---
+- name: Download dbus package
+  ansible.builtin.get_url:
+    url: "{{ dbus_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ dbus_url | basename }}"
+    mode: "0644"
+  register: get_url_result
+  retries: 5
+  delay: 10
+  until: get_url_result is succeeded
+
+- name: Extract dbus package
+  ansible.builtin.shell: |
+    chroot {{ root_image.mount_point }} /bin/bash -c '
+    [ -d /sources/{{ dbus_version }} ] || tar xf /sources/{{ dbus_url | basename }} -C /sources
+    '
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Configure, build and install dbus
+  ansible.builtin.shell: |
+    set -e
+    chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
+    set -e
+    cd /sources/{{ dbus_version }}
+    mkdir -p build
+    cd build
+    # systemd installs into /usr/lib64 (meson platform auto-detection)
+    # while everything else in this build uses /usr/lib; point
+    # pkg-config at both so libsystemd is found.
+    export PKG_CONFIG_PATH=/usr/lib64/pkgconfig:/usr/lib/pkgconfig
+    meson setup --prefix=/usr --buildtype=release -Dsystemd=enabled -Ddoxygen_docs=disabled -Dxml_docs=disabled ..
+    ninja
+    ninja install
+    ln -sfv /etc/machine-id /var/lib/dbus/machine-id 2>/dev/null || true
+    CHROOT_EOF
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Remove dbus source directory
+  ansible.builtin.file:
+    state: absent
+    path: "{{ sources_image.mount_point }}/{{ dbus_version }}"

@@ -1,0 +1,53 @@
+# code: language=ansible
+---
+- name: Download vim package
+  ansible.builtin.get_url:
+    url: "{{ vim_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ vim_url | basename }}"
+    mode: "0644"
+  register: get_url_result
+  retries: 5
+  delay: 10
+  until: get_url_result is succeeded
+
+- name: Extract vim package
+  ansible.builtin.shell: |
+    chroot {{ root_image.mount_point }} /bin/bash -c '
+    [ -d /sources/{{ vim_version }} ] || tar xf /sources/{{ vim_url | basename }} -C /sources
+    '
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Configure, build and install vim
+  ansible.builtin.shell: |
+    set -e
+    chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
+    set -e
+    cd /sources/{{ vim_version }}
+    echo '#define SYS_VIMRC_FILE "/etc/vimrc"' >> src/feature.h
+    ./configure --prefix=/usr
+    make -j{{ nproc.stdout | trim | int }}
+    make install
+    ln -sfv vim /usr/bin/vi
+    cat > /etc/vimrc <<'VIMRC'
+    set nocompatible
+    set backspace=2
+    syntax on
+    set mouse=r
+    VIMRC
+    CHROOT_EOF
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Remove vim source directory
+  ansible.builtin.file:
+    state: absent
+    path: "{{ sources_image.mount_point }}/{{ vim_version }}"

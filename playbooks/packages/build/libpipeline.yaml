@@ -1,0 +1,46 @@
+# code: language=ansible
+---
+- name: Download libpipeline package
+  ansible.builtin.get_url:
+    url: "{{ libpipeline_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ libpipeline_url | basename }}"
+    mode: "0644"
+  register: get_url_result
+  retries: 5
+  delay: 10
+  until: get_url_result is succeeded
+
+- name: Extract libpipeline package
+  ansible.builtin.shell: |
+    chroot {{ root_image.mount_point }} /bin/bash -c '
+    [ -d /sources/{{ libpipeline_version }} ] || tar xf /sources/{{ libpipeline_url | basename }} -C /sources
+    '
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Configure, build and install libpipeline
+  ansible.builtin.shell: |
+    set -e
+    chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
+    set -e
+    cd /sources/{{ libpipeline_version }}
+    ./configure --prefix=/usr
+    make -j{{ nproc.stdout | trim | int }}
+    make install
+    /sbin/ldconfig
+    CHROOT_EOF
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Remove libpipeline source directory
+  ansible.builtin.file:
+    state: absent
+    path: "{{ sources_image.mount_point }}/{{ libpipeline_version }}"

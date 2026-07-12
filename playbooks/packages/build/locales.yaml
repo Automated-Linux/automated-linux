@@ -1,0 +1,23 @@
+# code: language=ansible
+---
+- name: Generate locales
+  ansible.builtin.shell: |
+    set -e
+    chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
+    set -e
+    mkdir -p /usr/lib/locale
+    localedef -i en_US -f UTF-8 en_US.UTF-8
+    localedef -i it_IT -f UTF-8 it_IT.UTF-8
+    localedef -i de_DE -f UTF-8 de_DE.UTF-8
+    localedef -i fr_FR -f UTF-8 fr_FR.UTF-8
+    localedef -i es_ES -f UTF-8 es_ES.UTF-8
+    cat > /etc/locale.conf <<'EOF'
+    LANG=en_US.UTF-8
+    EOF
+    CHROOT_EOF
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0

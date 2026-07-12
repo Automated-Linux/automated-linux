@@ -1,0 +1,56 @@
+# code: language=ansible
+---
+- name: Download perl package
+  ansible.builtin.get_url:
+    url: "{{ perl_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ perl_url | basename }}"
+    mode: "0644"
+  register: get_url_result
+  retries: 5
+  delay: 10
+  until: get_url_result is succeeded
+
+- name: Extract perl package
+  ansible.builtin.shell: |
+    chroot {{ root_image.mount_point }} /bin/bash -c '
+    [ -d /sources/{{ perl_version }} ] || tar xf /sources/{{ perl_version }}.tar.gz -C /sources
+    '
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Configure, build and install perl
+  ansible.builtin.shell: |
+    set -e
+    chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
+    set -e
+    cd /sources/{{ perl_version }}
+    sh Configure -des -Dprefix=/usr \
+      -Dvendorprefix=/usr \
+      -Dprivlib=/usr/lib/perl5/5.42/core_perl \
+      -Darchlib=/usr/lib/perl5/5.42/core_perl \
+      -Dsitelib=/usr/lib/perl5/5.42/site_perl \
+      -Dsitearch=/usr/lib/perl5/5.42/site_perl \
+      -Dvendorlib=/usr/lib/perl5/5.42/vendor_perl \
+      -Dvendorarch=/usr/lib/perl5/5.42/vendor_perl \
+      -Dman1dir=/usr/share/man/man1 \
+      -Dman3dir=/usr/share/man/man3 \
+      -Uusethreads
+    make -j{{ nproc.stdout | trim | int }}
+    make install
+    /sbin/ldconfig
+    CHROOT_EOF
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Remove perl source directory
+  ansible.builtin.file:
+    state: absent
+    path: "{{ sources_image.mount_point }}/{{ perl_version }}"

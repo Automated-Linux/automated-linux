@@ -1,0 +1,47 @@
+# code: language=ansible
+---
+- name: Download iproute2 package
+  ansible.builtin.get_url:
+    url: "{{ iproute2_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ iproute2_url | basename }}"
+    mode: "0644"
+  register: get_url_result
+  retries: 5
+  delay: 10
+  until: get_url_result is succeeded
+
+- name: Extract iproute2 package
+  ansible.builtin.shell: |
+    chroot {{ root_image.mount_point }} /bin/bash -c '
+    [ -d /sources/{{ iproute2_version }} ] || tar xf /sources/{{ iproute2_url | basename }} -C /sources
+    '
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Build and install iproute2
+  ansible.builtin.shell: |
+    set -e
+    chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
+    set -e
+    cd /sources/{{ iproute2_version }}
+    sed -i '/^TARGETS/s/nstat//' misc/Makefile 2>/dev/null || true
+    sed -i /ARPD/d Makefile 2>/dev/null || true
+    rm -f man/man8/arpd.8 2>/dev/null || true
+    make -j{{ nproc.stdout | trim | int }} NETNS_RUN_DIR=/run/netns
+    make SBINDIR=/usr/sbin install
+    CHROOT_EOF
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Remove iproute2 source directory
+  ansible.builtin.file:
+    state: absent
+    path: "{{ sources_image.mount_point }}/{{ iproute2_version }}"

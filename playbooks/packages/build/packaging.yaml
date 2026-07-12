@@ -1,0 +1,30 @@
+# code: language=ansible
+---
+- name: Download packaging wheel
+  ansible.builtin.get_url:
+    url: "{{ packaging_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ packaging_url | basename }}"
+    mode: "0644"
+  register: get_url_result
+  retries: 5
+  delay: 10
+  until: get_url_result is succeeded
+
+- name: Install packaging wheel
+  ansible.builtin.shell: |
+    set -e
+    chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
+    set -e
+    pip3 install --no-index --no-cache-dir /sources/{{ packaging_url | basename }}
+    CHROOT_EOF
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Remove packaging wheel file
+  ansible.builtin.file:
+    state: absent
+    path: "{{ sources_image.mount_point }}/{{ packaging_url | basename }}"

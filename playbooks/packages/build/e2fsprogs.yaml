@@ -1,0 +1,51 @@
+# code: language=ansible
+---
+- name: Download e2fsprogs package
+  ansible.builtin.get_url:
+    url: "{{ e2fsprogs_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ e2fsprogs_url | basename }}"
+    mode: "0644"
+  register: get_url_result
+  retries: 5
+  delay: 10
+  until: get_url_result is succeeded
+
+- name: Extract e2fsprogs package
+  ansible.builtin.shell: |
+    chroot {{ root_image.mount_point }} /bin/bash -c '
+    [ -d /sources/{{ e2fsprogs_version }} ] || tar xf /sources/{{ e2fsprogs_version }}.tar.xz -C /sources
+    '
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Configure, build and install e2fsprogs
+  ansible.builtin.shell: |
+    set -e
+    chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
+    set -e
+    mkdir -p /sources/{{ e2fsprogs_version }}/build
+    cd /sources/{{ e2fsprogs_version }}/build
+    ../configure --enable-elf-shlibs \
+      --disable-libblkid \
+      --disable-libuuid \
+      --disable-fsck \
+      --disable-uuidd
+    make -j{{ nproc.stdout | trim | int }}
+    make install
+    /sbin/ldconfig
+    CHROOT_EOF
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Remove e2fsprogs source directory
+  ansible.builtin.file:
+    state: absent
+    path: "{{ sources_image.mount_point }}/{{ e2fsprogs_version }}"

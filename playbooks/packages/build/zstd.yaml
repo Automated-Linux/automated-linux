@@ -1,0 +1,45 @@
+# code: language=ansible
+---
+- name: Download zstd package
+  ansible.builtin.get_url:
+    url: "{{ zstd_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ zstd_url | basename }}"
+    mode: "0644"
+  register: get_url_result
+  retries: 5
+  delay: 10
+  until: get_url_result is succeeded
+
+- name: Extract zstd package
+  ansible.builtin.shell: |
+    chroot {{ root_image.mount_point }} /bin/bash -c '
+    [ -d /sources/{{ zstd_version }} ] || tar xf /sources/{{ zstd_url | basename }} -C /sources
+    '
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Build and install zstd
+  ansible.builtin.shell: |
+    set -e
+    chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
+    set -e
+    cd /sources/{{ zstd_version }}
+    make -j{{ nproc.stdout | trim | int }} prefix=/usr
+    make prefix=/usr install
+    /sbin/ldconfig
+    CHROOT_EOF
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Remove zstd source directory
+  ansible.builtin.file:
+    state: absent
+    path: "{{ sources_image.mount_point }}/{{ zstd_version }}"

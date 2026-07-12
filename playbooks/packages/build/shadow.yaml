@@ -1,0 +1,56 @@
+# code: language=ansible
+---
+- name: Download shadow package
+  ansible.builtin.get_url:
+    url: "{{ shadow_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ shadow_url | basename }}"
+    mode: "0644"
+  register: get_url_result
+  retries: 5
+  delay: 10
+  until: get_url_result is succeeded
+
+- name: Extract shadow package
+  ansible.builtin.shell: |
+    chroot {{ root_image.mount_point }} /bin/bash -c '
+    [ -d /sources/{{ shadow_version }} ] || tar xf /sources/{{ shadow_version }}.tar.xz -C /sources
+    '
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Configure, build and install shadow
+  ansible.builtin.shell: |
+    set -e
+    chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
+    set -e
+    cd /sources/{{ shadow_version }}
+    sed -i 's/groups$(EXEEXT) //' src/Makefile.in
+    ./configure --sysconfdir=/etc \
+      --disable-static \
+      --disable-logind \
+      --with-{b,yes}crypt \
+      --without-libbsd \
+      --with-group-name-max-length=32
+    make -j{{ nproc.stdout | trim | int }}
+    make install
+    /sbin/ldconfig
+    pwconv
+    grpconv
+    sed -i 's/^#ENCRYPT_METHOD DES/ENCRYPT_METHOD SHA512/' /etc/login.defs
+    echo 'root:root' | chpasswd
+    CHROOT_EOF
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Remove shadow source directory
+  ansible.builtin.file:
+    state: absent
+    path: "{{ sources_image.mount_point }}/{{ shadow_version }}"

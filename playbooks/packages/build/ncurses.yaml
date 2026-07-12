@@ -1,0 +1,65 @@
+# code: language=ansible
+---
+- name: Download ncurses package
+  ansible.builtin.get_url:
+    url: "{{ ncurses_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ ncurses_url | basename }}"
+    mode: "0644"
+  register: get_url_result
+  retries: 5
+  delay: 10
+  until: get_url_result is succeeded
+
+- name: Extract ncurses package
+  ansible.builtin.shell: |
+    chroot {{ root_image.mount_point }} /bin/bash -c '
+    [ -d /sources/{{ ncurses_version }} ] || tar xf /sources/{{ ncurses_url | basename }} -C /sources
+    '
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Configure, build and install ncurses (native, with pkg-config files)
+  ansible.builtin.shell: |
+    set -e
+    chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
+    set -e
+    cd /sources/{{ ncurses_version }}
+    ./configure --prefix=/usr           \
+                --mandir=/usr/share/man \
+                --with-shared           \
+                --without-debug         \
+                --without-normal        \
+                --without-cxx-binding   \
+                --enable-pc-files       \
+                --with-pkg-config-libdir=/usr/lib/pkgconfig
+    make -j{{ nproc.stdout | trim | int }}
+    make install
+    ln -sfv libncursesw.so /usr/lib/libncurses.so
+    for lib in ncurses form panel menu ; do
+        rm -vf                    /usr/lib/lib${lib}.so
+        echo "INPUT(-l${lib}w)" > /usr/lib/lib${lib}.so
+        ln -sfv ${lib}w.pc        /usr/lib/pkgconfig/${lib}.pc
+    done
+    rm -vf                     /usr/lib/libcursesw.so
+    echo "INPUT(-lncursesw)" > /usr/lib/libcursesw.so
+    ln -sfv libncurses.so       /usr/lib/libcurses.so
+    ln -sfv libncursesw.so.6    /usr/lib/libtinfo.so.6
+    ln -sfv libtinfo.so.6       /usr/lib/libtinfo.so
+    ln -sfv ncursesw.pc         /usr/lib/pkgconfig/tinfo.pc
+    /sbin/ldconfig
+    CHROOT_EOF
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Remove ncurses source directory
+  ansible.builtin.file:
+    state: absent
+    path: "{{ sources_image.mount_point }}/{{ ncurses_version }}"

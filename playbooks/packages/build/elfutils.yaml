@@ -1,0 +1,48 @@
+# code: language=ansible
+---
+- name: Download elfutils package
+  ansible.builtin.get_url:
+    url: "{{ elfutils_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ elfutils_url | basename }}"
+    mode: "0644"
+  register: get_url_result
+  retries: 5
+  delay: 10
+  until: get_url_result is succeeded
+
+- name: Extract elfutils package
+  ansible.builtin.shell: |
+    chroot {{ root_image.mount_point }} /bin/bash -c '
+    [ -d /sources/{{ elfutils_version }} ] || tar xf /sources/{{ elfutils_url | basename }} -C /sources
+    '
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Configure, build and install elfutils
+  ansible.builtin.shell: |
+    set -e
+    chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
+    set -e
+    cd /sources/{{ elfutils_version }}
+    ./configure --prefix=/usr --disable-debuginfod --enable-libdebuginfod=dummy
+    make -j{{ nproc.stdout | trim | int }}
+    make -C libelf install
+    install -vm644 config/libelf.pc /usr/lib/pkgconfig
+    rm /usr/lib/libelf.a
+    /sbin/ldconfig
+    CHROOT_EOF
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Remove elfutils source directory
+  ansible.builtin.file:
+    state: absent
+    path: "{{ sources_image.mount_point }}/{{ elfutils_version }}"

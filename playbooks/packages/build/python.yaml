@@ -1,0 +1,58 @@
+# code: language=ansible
+---
+- name: Download python package
+  ansible.builtin.get_url:
+    url: "{{ python_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ python_url | basename }}"
+    mode: "0644"
+  register: get_url_result
+  retries: 5
+  delay: 10
+  until: get_url_result is succeeded
+
+- name: Extract python package
+  ansible.builtin.shell: |
+    chroot {{ root_image.mount_point }} /bin/bash -c '
+    [ -d /sources/{{ python_version }} ] || tar xf /sources/{{ python_url | basename }} -C /sources
+    '
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Configure, build and install python
+  ansible.builtin.shell: |
+    set -e
+    chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
+    set -e
+    cd /sources/{{ python_version }}
+    ./configure --prefix=/usr \
+      --enable-shared \
+      --with-system-expat \
+      --without-ensurepip
+    # parallel linking of the many extension modules is occasionally
+    # flaky under resource contention; retry once sequentially to pick
+    # up anything that lost the race.
+    make -j{{ nproc.stdout | trim | int }} || make -j1
+    make install || (make -j1 && make install)
+    python3 -m ensurepip
+    # ensurepip only reliably (re)generates the pip3.13-versioned
+    # script; other build systems in this chain expect unversioned
+    # pip3/pip on PATH too.
+    ln -sfv pip3.13 /usr/bin/pip3
+    ln -sfv pip3.13 /usr/bin/pip
+    /sbin/ldconfig
+    CHROOT_EOF
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Remove python source directory
+  ansible.builtin.file:
+    state: absent
+    path: "{{ sources_image.mount_point }}/{{ python_version }}"

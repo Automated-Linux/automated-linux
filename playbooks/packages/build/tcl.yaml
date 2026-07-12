@@ -1,0 +1,49 @@
+# code: language=ansible
+---
+- name: Download tcl package
+  ansible.builtin.get_url:
+    url: "{{ tcl_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ tcl_url | basename }}"
+    mode: "0644"
+  register: get_url_result
+  retries: 5
+  delay: 10
+  until: get_url_result is succeeded
+
+- name: Extract tcl package
+  ansible.builtin.shell: |
+    chroot {{ root_image.mount_point }} /bin/bash -c '
+    [ -d /sources/{{ tcl_version }} ] || tar xf /sources/{{ tcl_url | basename }} -C /sources
+    '
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Configure, build and install tcl
+  ansible.builtin.shell: |
+    set -e
+    chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
+    set -e
+    cd /sources/{{ tcl_version }}/unix
+    ./configure --prefix=/usr --mandir=/usr/share/man
+    export LD_LIBRARY_PATH="$(pwd):${LD_LIBRARY_PATH:-}"
+    make -j{{ nproc.stdout | trim | int }}
+    make install
+    make install-private-headers
+    ln -sfv tclsh9.0 /usr/bin/tclsh
+    /sbin/ldconfig
+    CHROOT_EOF
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Remove tcl source directory
+  ansible.builtin.file:
+    state: absent
+    path: "{{ sources_image.mount_point }}/{{ tcl_version }}"

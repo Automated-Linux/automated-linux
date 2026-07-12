@@ -1,0 +1,53 @@
+# code: language=ansible
+---
+- name: Download tzdata package
+  ansible.builtin.get_url:
+    url: "{{ tzdata_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ tzdata_url | basename }}"
+    mode: "0644"
+  register: get_url_result
+  retries: 5
+  delay: 10
+  until: get_url_result is succeeded
+
+- name: Extract tzdata package
+  ansible.builtin.shell: |
+    chroot {{ root_image.mount_point }} /bin/bash -c '
+    mkdir -p /sources/{{ tzdata_version }}
+    tar xf /sources/{{ tzdata_url | basename }} -C /sources/{{ tzdata_version }}
+    '
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Build zoneinfo database and set UTC as default localtime
+  ansible.builtin.shell: |
+    set -e
+    chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
+    set -e
+    cd /sources/{{ tzdata_version }}
+    mkdir -p /usr/share/zoneinfo/posix /usr/share/zoneinfo/right
+    for tz in etcetera southamerica northamerica europe africa antarctica \
+              asia australasia backward; do
+      zic -L /dev/null -d /usr/share/zoneinfo ${tz}
+      zic -L /dev/null -d /usr/share/zoneinfo/posix ${tz}
+      zic -L leapseconds -d /usr/share/zoneinfo/right ${tz}
+    done
+    cp -v zone.tab zone1970.tab iso3166.tab /usr/share/zoneinfo
+    zic -d /usr/share/zoneinfo -p America/New_York
+    ln -sfv /usr/share/zoneinfo/Etc/UTC /etc/localtime
+    CHROOT_EOF
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Remove tzdata source directory
+  ansible.builtin.file:
+    state: absent
+    path: "{{ sources_image.mount_point }}/{{ tzdata_version }}"

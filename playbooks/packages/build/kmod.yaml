@@ -1,0 +1,54 @@
+# code: language=ansible
+---
+- name: Download kmod package
+  ansible.builtin.get_url:
+    url: "{{ kmod_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ kmod_url | basename }}"
+    mode: "0644"
+  register: get_url_result
+  retries: 5
+  delay: 10
+  until: get_url_result is succeeded
+
+- name: Extract kmod package
+  ansible.builtin.shell: |
+    chroot {{ root_image.mount_point }} /bin/bash -c '
+    [ -d /sources/{{ kmod_version }} ] || tar xf /sources/{{ kmod_url | basename }} -C /sources
+    '
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Configure, build and install kmod
+  ansible.builtin.shell: |
+    set -e
+    chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
+    set -e
+    cd /sources/{{ kmod_version }}
+    ./configure --prefix=/usr \
+      --sysconfdir=/etc \
+      --with-openssl \
+      --with-xz \
+      --with-zstd \
+      --disable-manpages
+    make -j{{ nproc.stdout | trim | int }}
+    make install
+    for target in depmod insmod modinfo modprobe rmmod; do
+      ln -sfv ../bin/kmod /usr/sbin/${target}
+    done
+    /sbin/ldconfig
+    CHROOT_EOF
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Remove kmod source directory
+  ansible.builtin.file:
+    state: absent
+    path: "{{ sources_image.mount_point }}/{{ kmod_version }}"

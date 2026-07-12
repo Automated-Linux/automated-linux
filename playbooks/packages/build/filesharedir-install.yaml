@@ -1,0 +1,45 @@
+# code: language=ansible
+---
+- name: Download File-ShareDir-Install package
+  ansible.builtin.get_url:
+    url: "{{ filesharedir_install_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ filesharedir_install_url | basename }}"
+    mode: "0644"
+  register: get_url_result
+  retries: 5
+  delay: 10
+  until: get_url_result is succeeded
+
+- name: Extract File-ShareDir-Install package
+  ansible.builtin.shell: |
+    chroot {{ root_image.mount_point }} /bin/bash -c '
+    [ -d /sources/{{ filesharedir_install_version }} ] || tar xf /sources/{{ filesharedir_install_url | basename }} -C /sources
+    '
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Configure, build and install File-ShareDir-Install
+  ansible.builtin.shell: |
+    set -e
+    chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
+    set -e
+    cd /sources/{{ filesharedir_install_version }}
+    perl Makefile.PL
+    make -j{{ nproc.stdout | trim | int }}
+    make install
+    CHROOT_EOF
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Remove File-ShareDir-Install source directory
+  ansible.builtin.file:
+    state: absent
+    path: "{{ sources_image.mount_point }}/{{ filesharedir_install_version }}"
