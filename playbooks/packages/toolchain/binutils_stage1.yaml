@@ -7,6 +7,10 @@
     url: "{{ binutils_url }}"
     dest: "{{ sources_image.mount_point }}/{{ binutils_url | basename }}"
     mode: "0644"
+  register: get_url_result
+  retries: 5
+  delay: 10
+  until: get_url_result is succeeded
 
 - name: Extract binutils package
   become: true
@@ -49,6 +53,7 @@
   become_user: "{{ automated_user }}"
   ansible.builtin.command: |
     make -j{{ nproc.stdout | int * 2 }}
+  register: result
   args:
     chdir: "{{ sources_image.mount_point }}/{{ binutils_version }}/build"
   failed_when:
@@ -60,6 +65,7 @@
   become_user: "{{ automated_user }}"
   ansible.builtin.command: |
     make install
+  register: result
   args:
     chdir: "{{ sources_image.mount_point }}/{{ binutils_version }}/build"
   failed_when:

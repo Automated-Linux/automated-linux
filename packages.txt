@@ -15,7 +15,7 @@ https://ftpmirror.gnu.org/gnu/diffutils/diffutils-3.12.tar.xz
 https://www.kernel.org/pub//linux/kernel/people/tytso/e2fsprogs/v1.47.4/e2fsprogs-1.47.4.tar.xz
 https://sourceware.org/elfutils/ftp/0.195/elfutils-0.195.tar.bz2
 https://github.com/libexpat/libexpat/releases/download/R_2_8_2/expat-2.8.2.tar.xz
-http://prdownloads.sourceforge.net/expect/expect5.45.4.tar.gz
+https://prdownloads.sourceforge.net/expect/expect5.45.4.tar.gz
 https://astron.com/pub/file/file-5.47.tar.gz
 https://ftpmirror.gnu.org/gnu/findutils/findutils-4.10.0.tar.xz
 https://github.com/westes/flex/releases/download/v2.6.4/flex-2.6.4.tar.gz
@@ -71,7 +71,7 @@ https://pypi.org/packages/source/s/setuptools/setuptools-83.0.0.tar.gz
 https://github.com/shadow-maint/shadow/releases/download/4.19.4/shadow-4.19.4.tar.xz
 https://github.com/systemd/systemd/archive/refs/tags/v261.1.tar.gz
 https://ftpmirror.gnu.org/gnu/tar/tar-1.35.tar.xz
-http://prdownloads.sourceforge.net/tcl/tcl9.0.4-src.tar.gz
+https://prdownloads.sourceforge.net/tcl/tcl9.0.4-src.tar.gz
 https://ftpmirror.gnu.org/gnu/texinfo/texinfo-7.3.tar.xz
 https://data.iana.org/time-zones/releases/tzdata2026c.tar.gz
 https://www.kernel.org/pub/linux/utils/util-linux/v2.42/util-linux-2.42.2.tar.xz

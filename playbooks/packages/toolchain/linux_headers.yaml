@@ -7,6 +7,10 @@
     url: "{{ linux_url }}"
     dest: "{{ sources_image.mount_point }}/{{ linux_url | basename }}"
     mode: "0644"
+  register: get_url_result
+  retries: 5
+  delay: 10
+  until: get_url_result is succeeded
 
 - name: Extract linux kernel package
   become: true

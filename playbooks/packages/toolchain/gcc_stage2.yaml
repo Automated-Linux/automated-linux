@@ -7,6 +7,10 @@
     url: "{{ gcc_url }}"
     dest: "{{ sources_image.mount_point }}/{{ gcc_url | basename }}"
     mode: "0644"
+  register: get_url_result
+  retries: 5
+  delay: 10
+  until: get_url_result is succeeded
 
 - name: Download mpfr package
   become: true
@@ -15,6 +19,10 @@
     url: "{{ mpfr_url }}"
     dest: "{{ sources_image.mount_point }}/{{ mpfr_url | basename }}"
     mode: "0644"
+  register: get_url_result
+  retries: 5
+  delay: 10
+  until: get_url_result is succeeded
 
 - name: Download gmp package
   become: true
@@ -23,6 +31,10 @@
     url: "{{ gmp_url }}"
     dest: "{{ sources_image.mount_point }}/{{ gmp_url | basename }}"
     mode: "0644"
+  register: get_url_result
+  retries: 5
+  delay: 10
+  until: get_url_result is succeeded
 
 - name: Download mpc package
   become: true
@@ -31,6 +43,10 @@
     url: "{{ mpc_url }}"
     dest: "{{ sources_image.mount_point }}/{{ mpc_url | basename }}"
     mode: "0644"
+  register: get_url_result
+  retries: 5
+  delay: 10
+  until: get_url_result is succeeded
 
 - name: Extract gcc package
   become: true

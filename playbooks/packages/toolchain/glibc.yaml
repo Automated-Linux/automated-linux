@@ -7,6 +7,10 @@
     url: "{{ glibc_url }}"
     dest: "{{ sources_image.mount_point }}/{{ glibc_url | basename }}"
     mode: "0644"
+  register: get_url_result
+  retries: 5
+  delay: 10
+  until: get_url_result is succeeded
 
 - name: Extract glibc package
   become: true
@@ -64,6 +68,7 @@
   become_user: "{{ automated_user }}"
   ansible.builtin.shell: |
     make -j{{ nproc.stdout | int * 2 }}
+  register: result
   args:
     chdir: "{{ sources_image.mount_point }}/{{ glibc_version }}/build"
   environment:
@@ -77,6 +82,7 @@
   become_user: "{{ automated_user }}"
   ansible.builtin.shell: |
     make DESTDIR={{ root_image.mount_point }} install
+  register: result
   environment:
     PATH: "{{ root_image.mount_point }}/tools/bin:/usr/bin"
   args:

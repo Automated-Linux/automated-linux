@@ -145,7 +145,7 @@
       ansible.builtin.import_tasks: build/tcl.yaml
       vars:
         tcl_version: tcl9.0.4
-        tcl_url: http://prdownloads.sourceforge.net/tcl/tcl9.0.4-src.tar.gz
+        tcl_url: https://prdownloads.sourceforge.net/tcl/tcl9.0.4-src.tar.gz
 
     # expect-5.45.4 predates Tcl 9 and needs deeper patching than macro
     # shims to build against it (CONST/TCL_VARARGS/_ANSI_ARGS_ removed in
