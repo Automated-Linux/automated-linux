@@ -2,6 +2,7 @@
 ---
 automated_user: "automated"
 automated_group: "automated"
+hostname: "automated-linux"
 docker:
   container_name: "automated-linux-build"
   image: "ubuntu:24.04"

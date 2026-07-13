@@ -33,12 +33,6 @@
     make -j{{ nproc.stdout | trim | int }}
     make install
     ln -sfv vim /usr/bin/vi
-    cat > /etc/vimrc <<'VIMRC'
-    set nocompatible
-    set backspace=2
-    syntax on
-    set mouse=r
-    VIMRC
     CHROOT_EOF
   args:
     executable: /bin/bash
@@ -46,6 +40,12 @@
   failed_when:
     - result.rc != 0
   changed_when: result.rc == 0
+
+- name: Install /etc/vimrc
+  ansible.builtin.template:
+    src: rootfs/etc/vimrc.j2
+    dest: "{{ root_image.mount_point }}/etc/vimrc"
+    mode: "0644"
 
 - name: Remove vim source directory
   ansible.builtin.file:

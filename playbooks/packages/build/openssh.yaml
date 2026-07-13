@@ -50,50 +50,43 @@
     - result.rc != 0
   changed_when: result.rc == 0
 
-- name: Install sshd systemd unit and enable it
-  ansible.builtin.shell: |
-    set -e
-    chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
-    set -e
-    # root is effectively the only usable account on this minimal
-    # system (see essential-files.yaml); OpenSSH default-disallows
-    # root password auth (prohibit-password), so allow it explicitly.
-    cat >> /etc/ssh/sshd_config <<'EOF'
-    PermitRootLogin yes
-    EOF
+- name: Allow root password login over SSH
+  # root is effectively the only usable account on this minimal
+  # system (see essential-files.yaml); OpenSSH default-disallows
+  # root password auth (prohibit-password), so allow it explicitly.
+  ansible.builtin.lineinfile:
+    path: "{{ root_image.mount_point }}/etc/ssh/sshd_config"
+    line: "PermitRootLogin yes"
 
-    # openssh builds before systemd, above, so this directory does not
-    # necessarily exist yet on a from-scratch build.
-    mkdir -p /usr/lib/systemd/system
-    cat > /usr/lib/systemd/system/sshd.service <<'EOF'
-    [Unit]
-    Description=OpenSSH Daemon
-    After=network.target
+- name: Install sshd systemd unit
+  # openssh builds before systemd, so this directory does not
+  # necessarily exist yet on a from-scratch build.
+  ansible.builtin.file:
+    path: "{{ root_image.mount_point }}/usr/lib/systemd/system"
+    state: directory
+    mode: "0755"
 
-    [Service]
-    ExecStartPre=/usr/bin/ssh-keygen -A
-    ExecStart=/usr/sbin/sshd -D
-    ExecReload=/bin/kill -HUP $MAINPID
-    KillMode=process
-    Restart=on-failure
-    RestartSec=5s
+- name: Install sshd.service
+  ansible.builtin.template:
+    src: rootfs/usr/lib/systemd/system/sshd.service.j2
+    dest: "{{ root_image.mount_point }}/usr/lib/systemd/system/sshd.service"
+    mode: "0644"
 
-    [Install]
-    WantedBy=multi-user.target
-    EOF
-    # systemctl itself does not exist yet either (systemd builds
-    # after openssh); create the enable symlink directly instead of
-    # relying on `systemctl enable`.
-    mkdir -p /etc/systemd/system/multi-user.target.wants
-    ln -sfv /usr/lib/systemd/system/sshd.service \
-      /etc/systemd/system/multi-user.target.wants/sshd.service
-    CHROOT_EOF
-  args:
-    executable: /bin/bash
-  register: result
-  failed_when:
-    - result.rc != 0
-  changed_when: result.rc == 0
+- name: Ensure /etc/systemd/system/multi-user.target.wants exists
+  ansible.builtin.file:
+    path: "{{ root_image.mount_point }}/etc/systemd/system/multi-user.target.wants"
+    state: directory
+    mode: "0755"
+
+- name: Enable sshd.service
+  # systemctl itself does not exist yet either (systemd builds after
+  # openssh); create the enable symlink directly instead of relying
+  # on `systemctl enable`.
+  ansible.builtin.file:
+    src: /usr/lib/systemd/system/sshd.service
+    dest: "{{ root_image.mount_point }}/etc/systemd/system/multi-user.target.wants/sshd.service"
+    state: link
+    force: true
 
 - name: Remove openssh source directory
   ansible.builtin.file:

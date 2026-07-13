@@ -1,0 +1,36 @@
+#!/bin/bash
+mount -t proc proc /proc 2>/dev/null
+mount -t sysfs sysfs /sys 2>/dev/null
+mount -t devtmpfs devtmpfs /dev 2>/dev/null
+
+# tty1 (virtio-gpu framebuffer console): best-effort background
+# respawn, since it only works when QEMU is given a GPU device
+# (-device virtio-gpu-pci). The explicit redirect to /dev/tty1 is
+# required, not cosmetic: this subshell inherits stdin/stdout/
+# stderr from PID 1, which points at /dev/console, and setsid -c
+# silently fails to make tty1 the controlling terminal when the
+# calling process fds are not already pointing at it - agetty then
+# exits immediately every time with no visible error (its own
+# error output, if any, goes to the not-yet-acquired tty1, i.e.
+# nowhere). The sleep keeps that failure case (no GPU device
+# attached) from busy-looping and flooding /dev/console, which
+# would otherwise drown out the ttyAMA0 prompt below. This must
+# stay backgrounded rather than run via the same respawn pattern
+# as ttyAMA0: PID 1 needs exactly one thing it waits on in the
+# foreground forever, and that must be the console that is
+# actually guaranteed to work.
+(
+  while true; do
+    /usr/bin/setsid -c /sbin/agetty --noclear tty1 linux < /dev/tty1 > /dev/tty1 2>&1
+    sleep 1
+  done
+) &
+
+# ttyAMA0 (serial console): runs in the foreground, keeping PID 1
+# alive forever via this loop (setsid forks internally, so it is
+# run as a child instead of being exec-replaced directly, to avoid
+# ever replacing PID 1 with a process that could exit and panic
+# the kernel).
+while true; do
+  /usr/bin/setsid -c /sbin/agetty --noclear ttyAMA0 115200 linux
+done

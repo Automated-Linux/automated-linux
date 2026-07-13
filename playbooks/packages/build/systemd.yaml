@@ -65,39 +65,51 @@
     state: absent
     path: "{{ sources_image.mount_point }}/{{ systemd_version }}"
 
-- name: Point /sbin/init at systemd and configure essentials
+- name: Point /sbin/init at systemd
+  ansible.builtin.file:
+    src: /usr/lib/systemd/systemd
+    dest: "{{ root_image.mount_point }}/sbin/init"
+    state: link
+    force: true
+
+- name: Create system users/groups
+  # systemd-sysusers.service skips itself on boot based on a
+  # ConditionNeedsUpdate timestamp heuristic that never trips in
+  # this image; create the systemd-* system users/groups once now
+  # so services like systemd-journald.socket have them regardless.
+  ansible.builtin.shell: |
+    set -e
+    chroot {{ root_image.mount_point }} /bin/bash -c 'systemd-sysusers'
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Install /etc/os-release
+  ansible.builtin.template:
+    src: rootfs/etc/os-release.j2
+    dest: "{{ root_image.mount_point }}/etc/os-release"
+    mode: "0644"
+
+- name: Install /etc/hostname
+  ansible.builtin.template:
+    src: rootfs/etc/hostname.j2
+    dest: "{{ root_image.mount_point }}/etc/hostname"
+    mode: "0644"
+
+- name: Install /etc/fstab
+  ansible.builtin.template:
+    src: rootfs/etc/fstab.j2
+    dest: "{{ root_image.mount_point }}/etc/fstab"
+    mode: "0644"
+
+- name: Set machine ID and default target, enable gettys and dbus
   ansible.builtin.shell: |
     set -e
     chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
     set -e
-    ln -sfv /usr/lib/systemd/systemd /sbin/init
-
-    # systemd-sysusers.service skips itself on boot based on a
-    # ConditionNeedsUpdate timestamp heuristic that never trips in
-    # this image; create the systemd-* system users/groups once now
-    # so services like systemd-journald.socket have them regardless.
-    systemd-sysusers
-
-    cat > /etc/os-release <<'EOF'
-    NAME="Automated Linux"
-    ID=automated-linux
-    PRETTY_NAME="Automated Linux"
-    EOF
-
-    cat > /etc/hostname <<'EOF'
-    automated-linux
-    EOF
-
-    cat > /etc/fstab <<'EOF'
-    # file system  mount-point  type   options              dump  fsck order
-    /dev/vda       /            ext4   defaults             1     1
-    proc           /proc        proc   nosuid,noexec,nodev  0     0
-    sysfs          /sys         sysfs  nosuid,noexec,nodev  0     0
-    devpts         /dev/pts     devpts gid=5,mode=620        0     0
-    tmpfs          /run         tmpfs  defaults             0     0
-    devtmpfs       /dev         devtmpfs mode=0755,nosuid    0     0
-    EOF
-
     systemd-machine-id-setup
     systemctl set-default multi-user.target
 
@@ -116,27 +128,34 @@
     - result.rc != 0
   changed_when: result.rc == 0
 
-- name: Configure systemd-networkd for DHCP network configuration
+- name: Ensure /etc/systemd/network exists
+  ansible.builtin.file:
+    path: "{{ root_image.mount_point }}/etc/systemd/network"
+    state: directory
+    mode: "0755"
+
+- name: Install systemd-networkd DHCP config
   # native systemd networking (no netplan/NetworkManager): networkd
   # brings interfaces up via DHCP, resolved handles DNS from that
   # DHCP lease via the stub-resolv.conf symlink below.
+  ansible.builtin.template:
+    src: rootfs/etc/systemd/network/20-wired-dhcp.network.j2
+    dest: "{{ root_image.mount_point }}/etc/systemd/network/20-wired-dhcp.network"
+    mode: "0644"
+
+- name: Point /etc/resolv.conf at systemd-resolved's stub
+  ansible.builtin.file:
+    src: /run/systemd/resolve/stub-resolv.conf
+    dest: "{{ root_image.mount_point }}/etc/resolv.conf"
+    state: link
+    force: true
+
+- name: Enable systemd-networkd and systemd-resolved
   ansible.builtin.shell: |
     set -e
-    chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
-    set -e
-    mkdir -p /etc/systemd/network
-    cat > /etc/systemd/network/20-wired-dhcp.network <<'EOF'
-    [Match]
-    Name=!lo
-
-    [Network]
-    DHCP=yes
-    EOF
-
-    ln -sfv /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
-
+    chroot {{ root_image.mount_point }} /bin/bash -c '
     systemctl enable systemd-networkd.service systemd-resolved.service 2>/dev/null || true
-    CHROOT_EOF
+    '
   args:
     executable: /bin/bash
   register: result

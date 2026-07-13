@@ -11,9 +11,6 @@
     localedef -i de_DE -f UTF-8 de_DE.UTF-8
     localedef -i fr_FR -f UTF-8 fr_FR.UTF-8
     localedef -i es_ES -f UTF-8 es_ES.UTF-8
-    cat > /etc/locale.conf <<'EOF'
-    LANG=en_US.UTF-8
-    EOF
     CHROOT_EOF
   args:
     executable: /bin/bash
@@ -21,3 +18,9 @@
   failed_when:
     - result.rc != 0
   changed_when: result.rc == 0
+
+- name: Install /etc/locale.conf
+  ansible.builtin.template:
+    src: rootfs/etc/locale.conf.j2
+    dest: "{{ root_image.mount_point }}/etc/locale.conf"
+    mode: "0644"

@@ -106,7 +106,7 @@
         group: "{{ automated_group }}"
         mode: "0644"
       with_items:
-        - src: "templates/.bashrc.j2"
+        - src: "templates/rootfs/home/automated/.bashrc.j2"
           dest: "{{ root_image.mount_point }}/home/{{ automated_user }}/.bashrc"
-        - src: "templates/.bash_profile.j2"
+        - src: "templates/rootfs/home/automated/.bash_profile.j2"
           dest: "{{ root_image.mount_point }}/home/{{ automated_user }}/.bash_profile"
