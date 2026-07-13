@@ -45,6 +45,7 @@ kernel:
 qemu:
   memory: "2048"
   cpus: "4"
+  ssh_host_port: "2222"
 directories:
   - "{{ root_image.mount_point }}/etc"
   - "{{ root_image.mount_point }}/var"

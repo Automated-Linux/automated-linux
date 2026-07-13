@@ -67,7 +67,9 @@
             cd build-images && qemu-system-aarch64 -M virt -cpu host -accel hvf
             -m {{ qemu.memory }} -kernel Image -append "console=ttyAMA0 root=/dev/vda rw"
             -drive file=automated-linux-root.img,if=none,id=hd0,format=raw
-            -device virtio-blk-device,drive=hd0 -nographic
+            -device virtio-blk-device,drive=hd0
+            -netdev user,id=net0,hostfwd=tcp::{{ qemu.ssh_host_port }}-:22
+            -device virtio-net-pci,netdev=net0 -nographic
           - "Graphical window (virtio-gpu framebuffer console on tty1, large font):"
           - >-
             cd build-images && qemu-system-aarch64 -M virt -cpu host -accel hvf
@@ -75,3 +77,8 @@
             -drive file=automated-linux-root.img,if=none,id=hd0,format=raw
             -device virtio-blk-device,drive=hd0 -device virtio-gpu-pci
             -device qemu-xhci -device usb-kbd
+            -netdev user,id=net0,hostfwd=tcp::{{ qemu.ssh_host_port }}-:22
+            -device virtio-net-pci,netdev=net0
+          - >-
+            SSH (either boot command above; from another terminal once the VM is up):
+            ssh -p {{ qemu.ssh_host_port }} root@localhost

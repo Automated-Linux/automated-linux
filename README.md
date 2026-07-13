@@ -44,6 +44,7 @@ All tunables live in [`vars/automated-linux.yaml`](vars/automated-linux.yaml):
 | `root_image` / `sources_image` | Size and path of the two disk images (under `build-images/`, gitignored) |
 | `kernel.version` / `kernel.url` | Kernel version to build |
 | `qemu.memory` / `qemu.cpus` | VM resources for the boot test |
+| `qemu.ssh_host_port` | Mac-side port forwarded to the VM's SSH (default `2222`) — see [Networking](#networking) |
 | `packages` | Host build tools installed into the container via `apt` |
 
 Source package versions/URLs are in [`packages.txt`](packages.txt) and hardcoded per-package in [`playbooks/packages/toolchain.yaml`](playbooks/packages/toolchain.yaml) (cross-toolchain) and [`playbooks/packages/build.yaml`](playbooks/packages/build.yaml) (native userland).
@@ -65,8 +66,12 @@ cd build-images
 qemu-system-aarch64 -M virt -cpu host -accel hvf -m 2048 \
   -kernel Image -append "console=ttyAMA0 root=/dev/vda rw" \
   -drive file=automated-linux-root.img,if=none,id=hd0,format=raw \
-  -device virtio-blk-device,drive=hd0 -nographic
+  -device virtio-blk-device,drive=hd0 \
+  -netdev user,id=net0,hostfwd=tcp::2222-:22 -device virtio-net-pci,netdev=net0 \
+  -nographic
 ```
+
+(the `-netdev`/`-device virtio-net-pci` pair gives the VM outbound networking and forwards Mac port 2222 to its SSH — see [Networking](#networking) below)
 
 Exit the VM with `Ctrl-A` then `X`.
 
@@ -113,6 +118,16 @@ Network configuration is native `systemd-networkd` (no netplan or NetworkManager
 - `systemd-resolved`, enabled, with `/etc/resolv.conf` symlinked to its `stub-resolv.conf` — DNS from the DHCP lease is picked up automatically.
 
 To add a static IP, a different DHCP scope, or a second interface, add another `.network` file (or edit this one) in `/etc/systemd/network/` and `systemctl restart systemd-networkd` — see `man systemd.network`.
+
+### SSH access from the Mac
+
+The interactive boot commands printed by `qemu.yaml` (and `automated-linux.yaml`'s final run) include `-netdev user,hostfwd=tcp::2222-:22 -device virtio-net-pci` (port configurable via `qemu.ssh_host_port` in `vars/automated-linux.yaml`), so once the VM is up:
+
+```sh
+ssh -p 2222 root@localhost
+```
+
+This is QEMU user-mode (SLIRP) networking with a single forwarded port — the VM isn't reachable from other devices on your LAN, only from the Mac itself, but it needs no special privileges and just works. **True bridged networking (the VM getting its own LAN IP via `-netdev vmnet-bridged`) is not achievable without a paid Apple Developer ID Application certificate**: the `com.apple.vm.networking` entitlement it requires is one of Apple's *restricted* entitlements, and AMFI rejects any binary claiming it that isn't signed with a real Developer ID and (in practice) still needs Apple's own provisioning for that specific entitlement — a free "Apple Development" (Xcode) certificate isn't enough. If you attempt this yourself: re-signing Homebrew's QEMU with that entitlement and no matching profile doesn't just disable networking, it makes AMFI kill the binary outright, breaking QEMU entirely (`codesign --entitlements ... --force -s - $(brew --prefix qemu)/bin/qemu-system-aarch64` with only `com.apple.security.hypervisor` restores it).
 
 ## Gotchas
 
