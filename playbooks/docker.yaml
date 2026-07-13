@@ -18,11 +18,33 @@
         mode: "0755"
 
     - name: Create and start build container
+      # Not privileged: true. The pipeline only needs to create/mount loop
+      # devices for the two disk images, chroot into the target root, and
+      # (via become/become_user) switch uid/gid while building — this
+      # capability set covers all of that without granting the container
+      # full access to the host's devices/kernel interfaces that
+      # --privileged implies. If a future package build or loop-mount step
+      # fails with a permission error that a full audit traces back to a
+      # missing capability, the safe fallback is to set `privileged: true`
+      # here again (and drop cap_add/devices) rather than guessing at
+      # further capabilities to add.
       community.docker.docker_container:
         name: "{{ docker.container_name }}"
         image: "{{ docker.image }}"
         state: started
-        privileged: true
+        capabilities:
+          - SYS_ADMIN     # mount/umount, loop device setup
+          - MKNOD         # devpts/devtmpfs node creation inside the chroot
+          - SYS_CHROOT    # chroot into the target root image
+          - DAC_OVERRIDE  # read/write files regardless of permissions during install steps
+          - CHOWN         # chown -R during ownership fixups (see packages/build.yaml)
+          - FOWNER        # bypass owner checks on files created by other steps
+          - SETUID        # become_user privilege drop/switch
+          - SETGID        # become_user privilege drop/switch
+        devices:
+          - "/dev/loop-control:/dev/loop-control:rwm"
+        device_cgroup_rules:
+          - "c 7:* rmw"  # loop devices (major 7): allow the dynamic /dev/loopN nodes the kernel creates for the two mounted disk images
         restart_policy: unless-stopped
         init: true
         command: sleep infinity
