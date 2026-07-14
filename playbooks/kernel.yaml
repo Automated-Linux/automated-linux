@@ -41,11 +41,56 @@
         remote_src: true
         creates: "{{ sources_image.mount_point }}/{{ kernel.version }}"
 
-    - name: Generate arm64 defconfig
-      ansible.builtin.command: make defconfig ARCH=arm64
+    - name: Generate arm64 allmodconfig (broadest possible hardware support)
+      # allmodconfig enables essentially every driver/subsystem the kernel
+      # supports (as a module wherever possible) instead of defconfig's
+      # curated common-case subset — this is the "run on as much different
+      # hardware as possible" build, not just the QEMU virt machine this
+      # pipeline boots by default.
+      ansible.builtin.command: make ARCH=arm64 allmodconfig
       args:
         chdir: "{{ sources_image.mount_point }}/{{ kernel.version }}"
         creates: "{{ sources_image.mount_point }}/{{ kernel.version }}/.config"
+
+    - name: Strip staging/debug/test code and pin boot-critical drivers built-in
+      # allmodconfig also drags in everything under CONFIG_STAGING (drivers
+      # explicitly marked experimental/not-production-ready by upstream) and
+      # the entire debug/instrumentation tree gated behind CONFIG_DEBUG_KERNEL
+      # (KASAN, UBSAN, lockdep, kgdb, ...), plus CONFIG_KUNIT/CONFIG_SAMPLES
+      # test and sample code — none of that belongs in a production image, and
+      # disabling these top-level gates lets Kconfig's own dependency
+      # resolution (via olddefconfig, below) turn off the hundreds of
+      # individual options that depend on them, instead of listing each one
+      # by hand.
+      #
+      # Separately: this pipeline boots the kernel directly via QEMU with no
+      # initramfs (root=/dev/vda straight off the kernel command line), so
+      # whatever driver mounts the root filesystem MUST be built directly
+      # into the kernel Image — it can never be a loadable module, since
+      # there is nothing to load it before root is mounted. allmodconfig
+      # left unchecked would turn these into modules like everything else,
+      # which would boot-loop with "unable to mount root fs". Force them
+      # back to built-in explicitly.
+      ansible.builtin.shell: |
+        set -e
+        ./scripts/config --disable CONFIG_STAGING
+        ./scripts/config --disable CONFIG_DEBUG_KERNEL
+        ./scripts/config --disable CONFIG_KUNIT
+        ./scripts/config --disable CONFIG_SAMPLES
+        ./scripts/config --enable CONFIG_DEBUG_INFO_NONE
+        ./scripts/config --enable CONFIG_VIRTIO_MMIO
+        ./scripts/config --enable CONFIG_VIRTIO_PCI
+        ./scripts/config --enable CONFIG_VIRTIO_BLK
+        ./scripts/config --enable CONFIG_EXT4_FS
+        ./scripts/config --enable CONFIG_SERIAL_AMBA_PL011
+        ./scripts/config --enable CONFIG_SERIAL_AMBA_PL011_CONSOLE
+        make ARCH=arm64 olddefconfig
+      args:
+        chdir: "{{ sources_image.mount_point }}/{{ kernel.version }}"
+      register: result
+      failed_when:
+        - result.rc != 0
+      changed_when: result.rc == 0
 
     - name: Enable virtio-gpu framebuffer console and virtio-input support
       # Built-in (not module): the QEMU `virt` machine exposes virtio-gpu and
