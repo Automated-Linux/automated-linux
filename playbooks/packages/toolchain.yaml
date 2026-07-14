@@ -19,6 +19,43 @@
         nproc
       register: nproc
 
+    # ccache wraps the host's plain gcc/g++ (used to bootstrap binutils
+    # stage1 and gcc stage1 — everything from glibc onward uses the
+    # freshly built cross-toolchain in tools/bin instead) so that a full
+    # pipeline re-run — which recompiles the entire toolchain from scratch
+    # every time, since none of these steps are guarded against
+    # already-being-built — reuses object code instead of recompiling gcc
+    # from zero. CCACHE_DIR lives on {{ docker.workspace }} (the bind-mounted
+    # project directory, i.e. build-images/ on the Mac's own disk), the same
+    # persistence pattern the two disk images already rely on, so the cache
+    # survives container recreation instead of being wiped with the
+    # disposable container on every full run.
+    - name: Create persistent ccache directory
+      ansible.builtin.file:
+        path: "{{ docker.workspace }}/build-images/.ccache"
+        state: directory
+        owner: "{{ automated_user }}"
+        group: "{{ automated_group }}"
+        mode: "0755"
+
+    - name: Create ccache masquerade directory
+      ansible.builtin.file:
+        path: /usr/lib/ccache/bin
+        state: directory
+        mode: "0755"
+
+    - name: Create ccache compiler-masquerade symlinks for the host gcc/g++
+      ansible.builtin.file:
+        src: /usr/bin/ccache
+        dest: "/usr/lib/ccache/bin/{{ item }}"
+        state: link
+        force: true
+      loop:
+        - gcc
+        - cc
+        - g++
+        - c++
+
     - name: Import binutils stage1 tasks
       ansible.builtin.import_tasks: toolchain/binutils_stage1.yaml
       vars:

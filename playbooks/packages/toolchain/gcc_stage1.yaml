@@ -147,7 +147,8 @@
   args:
     chdir: "{{ sources_image.mount_point }}/{{ gcc_version }}/build"
   environment:
-    PATH: "{{ root_image.mount_point }}/tools/bin:/usr/bin"
+    PATH: "/usr/lib/ccache/bin:{{ root_image.mount_point }}/tools/bin:/usr/bin"
+    CCACHE_DIR: "{{ docker.workspace }}/build-images/.ccache"
   failed_when:
     - result.rc != 0
   changed_when: result.rc == 0
@@ -160,7 +161,8 @@
   args:
     chdir: "{{ sources_image.mount_point }}/{{ gcc_version }}/build"
   environment:
-    PATH: "{{ root_image.mount_point }}/tools/bin:/usr/bin"
+    PATH: "/usr/lib/ccache/bin:{{ root_image.mount_point }}/tools/bin:/usr/bin"
+    CCACHE_DIR: "{{ docker.workspace }}/build-images/.ccache"
   register: result
   failed_when:
     - result.rc != 0
@@ -174,7 +176,8 @@
   args:
     chdir: "{{ sources_image.mount_point }}/{{ gcc_version }}/build"
   environment:
-    PATH: "{{ root_image.mount_point }}/tools/bin:/usr/bin"
+    PATH: "/usr/lib/ccache/bin:{{ root_image.mount_point }}/tools/bin:/usr/bin"
+    CCACHE_DIR: "{{ docker.workspace }}/build-images/.ccache"
   register: result
   failed_when:
     - result.rc != 0
@@ -191,7 +194,8 @@
     - gcc_lib_target.stderr != ''
   changed_when: false
   environment:
-    PATH: "{{ root_image.mount_point }}/tools/bin:/usr/bin"
+    PATH: "/usr/lib/ccache/bin:{{ root_image.mount_point }}/tools/bin:/usr/bin"
+    CCACHE_DIR: "{{ docker.workspace }}/build-images/.ccache"
 
 - name: Get gcc target dir
   become: true
@@ -199,7 +203,8 @@
   ansible.builtin.shell: |
     dirname {{ gcc_lib_target.stdout }}
   environment:
-    PATH: "{{ root_image.mount_point }}/tools/bin:/usr/bin"
+    PATH: "/usr/lib/ccache/bin:{{ root_image.mount_point }}/tools/bin:/usr/bin"
+    CCACHE_DIR: "{{ docker.workspace }}/build-images/.ccache"
   register: gcc_target
   failed_when:
     - gcc_target.rc != 0

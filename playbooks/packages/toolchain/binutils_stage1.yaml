@@ -44,6 +44,9 @@
   register: result
   args:
     chdir: "{{ sources_image.mount_point }}/{{ binutils_version }}/build"
+  environment:
+    PATH: "/usr/lib/ccache/bin:/usr/bin:/bin"
+    CCACHE_DIR: "{{ docker.workspace }}/build-images/.ccache"
   failed_when:
     - result.rc != 0
   changed_when: result.rc == 0
@@ -56,6 +59,9 @@
   register: result
   args:
     chdir: "{{ sources_image.mount_point }}/{{ binutils_version }}/build"
+  environment:
+    PATH: "/usr/lib/ccache/bin:/usr/bin:/bin"
+    CCACHE_DIR: "{{ docker.workspace }}/build-images/.ccache"
   failed_when:
     - result.rc != 0
   changed_when: result.rc == 0
@@ -68,6 +74,9 @@
   register: result
   args:
     chdir: "{{ sources_image.mount_point }}/{{ binutils_version }}/build"
+  environment:
+    PATH: "/usr/lib/ccache/bin:/usr/bin:/bin"
+    CCACHE_DIR: "{{ docker.workspace }}/build-images/.ccache"
   failed_when:
     - result.rc != 0
   changed_when: result.rc == 0
