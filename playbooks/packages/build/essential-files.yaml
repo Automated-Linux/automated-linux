@@ -53,6 +53,30 @@
     dest: "{{ root_image.mount_point }}/etc/ld.so.conf"
     mode: "0644"
 
+- name: Install /etc/profile
+  ansible.builtin.template:
+    src: rootfs/etc/profile.j2
+    dest: "{{ root_image.mount_point }}/etc/profile"
+    mode: "0644"
+
+- name: Install /etc/inputrc
+  ansible.builtin.template:
+    src: rootfs/etc/inputrc.j2
+    dest: "{{ root_image.mount_point }}/etc/inputrc"
+    mode: "0644"
+
+- name: Install root's .bashrc
+  ansible.builtin.template:
+    src: rootfs/root/.bashrc.j2
+    dest: "{{ root_image.mount_point }}/root/.bashrc"
+    mode: "0644"
+
+- name: Install root's .bash_profile
+  ansible.builtin.template:
+    src: rootfs/root/.bash_profile.j2
+    dest: "{{ root_image.mount_point }}/root/.bash_profile"
+    mode: "0644"
+
 - name: Run ldconfig
   ansible.builtin.shell: |
     set -e

@@ -1,0 +1,77 @@
+# Begin /etc/inputrc
+# System-wide readline configuration — governs line editing/history
+# behaviour for bash and anything else linked against readline.
+
+# Allow the command prompt to wrap to the next line
+set horizontal-scroll-mode Off
+
+# Enable 8bit input
+set meta-flag On
+set input-meta On
+
+# Turns off 8th bit stripping
+set convert-meta Off
+
+# Keep the 8th bit for display
+set output-meta On
+
+# none, visible or audible
+set bell-style none
+
+# Completion behaviour
+set completion-ignore-case On
+set completion-map-case On
+set show-all-if-ambiguous On
+set show-all-if-unmodified On
+set menu-complete-display-prefix On
+set mark-symlinked-directories On
+set mark-directories On
+set skip-completed-text On
+set visible-stats On
+set colored-stats On
+set colored-completion-prefix On
+
+# Up/Down: search history using what's already typed on the line as a prefix
+"\e[A": history-search-backward
+"\e[B": history-search-forward
+"\eOA": history-search-backward
+"\eOB": history-search-forward
+
+# All of the following map the escape sequence of the value
+# contained in the 1st argument to the readline specific functions
+"\eOd": backward-word
+"\eOc": forward-word
+
+# Ctrl-Left / Ctrl-Right: move by word (common xterm/vte encoding)
+"\e[1;5C": forward-word
+"\e[1;5D": backward-word
+"\e[5C": forward-word
+"\e[5D": backward-word
+"\e[1;3C": forward-word
+"\e[1;3D": backward-word
+
+# for linux console
+"\e[1~": beginning-of-line
+"\e[4~": end-of-line
+"\e[5~": beginning-of-history
+"\e[6~": end-of-history
+"\e[3~": delete-char
+"\e[2~": quoted-insert
+
+# for xterm/Konsole
+"\eOH": beginning-of-line
+"\eOF": end-of-line
+"\e[H": beginning-of-line
+"\e[F": end-of-line
+
+# Alt-. : insert the last argument of the previous command (bash default,
+# restated here for robustness across terminfo entries)
+"\e.": yank-last-arg
+"\e_": yank-last-arg
+
+# Ctrl-Delete: delete the next word (left deliberately unbound — some
+# serial/legacy terminals send ^H for plain Backspace, and rebinding it
+# would break basic character deletion over that console)
+"\e[3;5~": kill-word
+
+# End /etc/inputrc

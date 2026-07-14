@@ -11,3 +11,5 @@ vars.yaml
 .lock
 playbooks/sources/*
 build-images
+.claude
+.ansible
