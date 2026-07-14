@@ -3,8 +3,6 @@
 - name: Automated-Linux Prepare
   hosts: "{{ host | default(docker.container_name) }}"
   gather_facts: false
-  collections:
-    - ansible.posix
 
   vars_files:
     - ../vars/automated-linux.yaml
@@ -44,12 +42,14 @@
       ansible.builtin.command:
         cmd: "fallocate -l {{ item.item.size }} {{ item.item.image }}"
       when: not item.stat.exists
+      changed_when: true
       loop: "{{ existing_images.results }}"
 
     - name: Create filesystems
       ansible.builtin.command:
         cmd: "/usr/sbin/mkfs.ext4 {{ item.item.image }}"
       when: not item.stat.exists
+      changed_when: true
       loop: "{{ existing_images.results }}"
 
     - name: Mount images # noqa: syntax-check[unknown-module]

@@ -1,6 +1,10 @@
 # code: language=ansible
 ---
-- ansible.builtin.import_playbook: docker.yaml
-- ansible.builtin.import_playbook: prepare.yaml
-- ansible.builtin.import_playbook: packages/toolchain.yaml
-- ansible.builtin.import_playbook: kernel.yaml
+- name: Provision the Docker build container
+  ansible.builtin.import_playbook: docker.yaml
+- name: Install host packages, create the build user, create/mount the disk images
+  ansible.builtin.import_playbook: prepare.yaml
+- name: Cross-compile the toolchain
+  ansible.builtin.import_playbook: packages/toolchain.yaml
+- name: Build the Linux kernel
+  ansible.builtin.import_playbook: kernel.yaml

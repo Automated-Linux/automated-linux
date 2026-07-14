@@ -27,6 +27,7 @@
     set -e
     chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
     set -e
+    set -o pipefail
     cd /sources/{{ shadow_version }}
     sed -i 's/groups$(EXEEXT) //' src/Makefile.in
     ./configure --sysconfdir=/etc \
@@ -35,7 +36,7 @@
       --with-{b,yes}crypt \
       --without-libbsd \
       --with-group-name-max-length=32
-    make -j{{ nproc.stdout | trim | int }}
+    make -j{{ nproc.stdout | trim | int * 2 }}
     make install
     /sbin/ldconfig
     pwconv

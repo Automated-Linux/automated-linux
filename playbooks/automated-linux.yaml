@@ -7,9 +7,15 @@
 #
 #   ansible-playbook automated-linux.yaml
 #
-- ansible.builtin.import_playbook: docker.yaml
-- ansible.builtin.import_playbook: prepare.yaml
-- ansible.builtin.import_playbook: packages/toolchain.yaml
-- ansible.builtin.import_playbook: kernel.yaml
-- ansible.builtin.import_playbook: packages/build.yaml
-- ansible.builtin.import_playbook: qemu.yaml
+- name: Provision the Docker build container
+  ansible.builtin.import_playbook: docker.yaml
+- name: Install host packages, create the build user, create/mount the disk images
+  ansible.builtin.import_playbook: prepare.yaml
+- name: Cross-compile the toolchain
+  ansible.builtin.import_playbook: packages/toolchain.yaml
+- name: Build the Linux kernel
+  ansible.builtin.import_playbook: kernel.yaml
+- name: Build the userland inside the chroot
+  ansible.builtin.import_playbook: packages/build.yaml
+- name: Boot and verify the result in QEMU
+  ansible.builtin.import_playbook: qemu.yaml
