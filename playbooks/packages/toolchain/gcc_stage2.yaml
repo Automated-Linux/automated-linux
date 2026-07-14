@@ -129,7 +129,7 @@
     --host="{{ arch.stdout }}-automated-linux-gnu" \
     --target="{{ arch.stdout }}-automated-linux-gnu" \
     --prefix=/usr                                  \
-    --with-build-sysroot=$LFS                      \
+    --with-build-sysroot={{ root_image.mount_point }} \
     --enable-default-pie                           \
     --enable-default-ssp                           \
     --disable-nls                                  \

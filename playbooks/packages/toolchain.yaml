@@ -21,9 +21,9 @@
 
     # This playbook's own last task ("Change ownership of toolchain
     # directory", below) chowns usr/lib/lib64/var/etc/bin/sbin/tools to
-    # root:root — correct once the toolchain is fully built (LFS's
-    # "Changing Ownership" step), but it makes a second run of this same
-    # playbook on an image where it already completed non-idempotent: the
+    # root:root — correct once the toolchain is fully built, but it makes
+    # a second run of this same playbook on an image where it already
+    # completed non-idempotent: the
     # very first become_user: automated install step hits a directory it
     # no longer owns ("Permission denied"). Reset ownership back to
     # automated_user here, every run, so packages/toolchain.yaml is safe
@@ -255,7 +255,7 @@
         - sbin
         - tools
 
-    - name: Create LFS Directory
+    - name: Create standard virtual filesystem mount points
       become: true
       ansible.builtin.file:
         path: "{{ root_image.mount_point }}/{{ item }}"

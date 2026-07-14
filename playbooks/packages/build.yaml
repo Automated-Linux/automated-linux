@@ -6,9 +6,8 @@
 # community.general.chroot connection plugin required. Every package is
 # built natively (not cross-compiled) inside the chroot with the
 # gcc/binutils/glibc already produced by packages/toolchain.yaml and
-# installed into {{ root_image.mount_point }}/usr, matching LFS Chapter 8
-# ("Installing Basic System Software") build order. Packages already built
-# as LFS Chapter 6 "temporary tools" by packages/toolchain.yaml (binutils,
+# installed into {{ root_image.mount_point }}/usr. Packages already built
+# as temporary bootstrap tools by packages/toolchain.yaml (binutils,
 # gcc, glibc, gmp, mpfr, mpc, libstdc++, m4, ncurses, bash, coreutils,
 # diffutils, file, findutils, gawk, grep, gzip, make, patch, sed, tar, xz)
 # are not rebuilt here. systemd is wired up as the final PID 1.
@@ -510,11 +509,10 @@
     - name: Reset ownership of the target root to root:root
       # prepare.yaml creates /etc, /var and /usr owned by automated_user
       # (needed at that point so the cross-toolchain build in
-      # packages/toolchain.yaml can write there as a non-root user,
-      # LFS-style) and nothing ever resets it afterwards — this is the
-      # LFS book's documented "chown -R root:root $LFS/{usr,var,etc,...}"
-      # step, done here since it must happen after every package is
-      # installed. Individual files created by this playbook's own
+      # packages/toolchain.yaml can write there as a non-root user) and
+      # nothing ever resets it afterwards — done here since it must
+      # happen after every package is installed. Individual files
+      # created by this playbook's own
       # ansible.builtin.template/file tasks (which run as root via
       # become: true) are already root:root; only the directories
       # inherited from prepare.yaml are affected. Without this,

@@ -22,7 +22,7 @@
     - result.rc != 0
   changed_when: result.rc == 0
 
-- name: Configure, build and install bzip2 (shared + static, per LFS)
+- name: Configure, build and install bzip2 (shared + static)
   ansible.builtin.shell: |
     set -e
     chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
