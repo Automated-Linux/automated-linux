@@ -52,16 +52,17 @@
         chdir: "{{ sources_image.mount_point }}/{{ kernel.version }}"
         creates: "{{ sources_image.mount_point }}/{{ kernel.version }}/.config"
 
-    - name: Strip staging/debug/test code and pin boot-critical drivers built-in
+    - name: Strip staging/debug/test/sanitizer code and pin boot-critical drivers built-in
       # allmodconfig also drags in everything under CONFIG_STAGING (drivers
-      # explicitly marked experimental/not-production-ready by upstream) and
-      # the entire debug/instrumentation tree gated behind CONFIG_DEBUG_KERNEL
-      # (KASAN, UBSAN, lockdep, kgdb, ...), plus CONFIG_KUNIT/CONFIG_SAMPLES
-      # test and sample code — none of that belongs in a production image, and
-      # disabling these top-level gates lets Kconfig's own dependency
-      # resolution (via olddefconfig, below) turn off the hundreds of
-      # individual options that depend on them, instead of listing each one
-      # by hand.
+      # explicitly marked experimental/not-production-ready by upstream),
+      # CONFIG_KUNIT/CONFIG_SAMPLES test/sample code, and — critically — a
+      # full set of compiler-instrumentation sanitizers (KASAN, UBSAN, KCOV,
+      # GCOV, shadow-call-stack) that add 2-3x runtime overhead and have no
+      # place in a production image. Disabling the CONFIG_DEBUG_KERNEL gate
+      # alone does *not* cascade to these on this kernel version (verified:
+      # a first attempt at this task left `-fsanitize=kernel-address` and
+      # friends on every single compile line despite DEBUG_KERNEL=n) — each
+      # sanitizer/instrumentation framework needs disabling explicitly.
       #
       # Separately: this pipeline boots the kernel directly via QEMU with no
       # initramfs (root=/dev/vda straight off the kernel command line), so
@@ -77,6 +78,23 @@
         ./scripts/config --disable CONFIG_DEBUG_KERNEL
         ./scripts/config --disable CONFIG_KUNIT
         ./scripts/config --disable CONFIG_SAMPLES
+        ./scripts/config --disable CONFIG_KASAN
+        ./scripts/config --disable CONFIG_UBSAN
+        ./scripts/config --disable CONFIG_UBSAN_SANITIZE_ALL
+        ./scripts/config --disable CONFIG_KCOV
+        ./scripts/config --disable CONFIG_GCOV_KERNEL
+        ./scripts/config --disable CONFIG_SHADOW_CALL_STACK
+        ./scripts/config --disable CONFIG_KFENCE
+        ./scripts/config --disable CONFIG_KMEMLEAK
+        ./scripts/config --disable CONFIG_DEBUG_OBJECTS
+        ./scripts/config --disable CONFIG_FAULT_INJECTION
+        ./scripts/config --disable CONFIG_LOCKDEP
+        ./scripts/config --disable CONFIG_PROVE_LOCKING
+        ./scripts/config --disable CONFIG_PROVE_RCU
+        ./scripts/config --disable CONFIG_DEBUG_ATOMIC_SLEEP
+        ./scripts/config --disable CONFIG_FTRACE_STARTUP_TEST
+        ./scripts/config --disable CONFIG_RCU_TRACE
+        ./scripts/config --disable CONFIG_LATENCYTOP
         ./scripts/config --enable CONFIG_DEBUG_INFO_NONE
         ./scripts/config --enable CONFIG_VIRTIO_MMIO
         ./scripts/config --enable CONFIG_VIRTIO_PCI
@@ -91,6 +109,20 @@
       failed_when:
         - result.rc != 0
       changed_when: result.rc == 0
+
+    - name: Verify sanitizer/instrumentation flags were actually stripped
+      # Cheap correctness gate before committing to a multi-hour build: fail
+      # fast here instead of discovering -fsanitize=... on every compile
+      # line an hour into "Build kernel Image and modules" again.
+      ansible.builtin.shell: |
+        set -e
+        ! grep -qE "^CONFIG_(KASAN|UBSAN|KCOV|GCOV_KERNEL|SHADOW_CALL_STACK)=y" .config
+      args:
+        chdir: "{{ sources_image.mount_point }}/{{ kernel.version }}"
+        executable: /bin/bash
+      register: sanitizer_check
+      changed_when: false
+      failed_when: sanitizer_check.rc != 0
 
     - name: Enable virtio-gpu framebuffer console and virtio-input support
       # Built-in (not module): the QEMU `virt` machine exposes virtio-gpu and
