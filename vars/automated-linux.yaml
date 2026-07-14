@@ -31,6 +31,7 @@ packages:
   - xz-utils
   - bzip2
   - flex
+  - ccache
 root_image:
   image: "{{ docker.workspace }}/build-images/automated-linux-root.img"
   size: "10G"
