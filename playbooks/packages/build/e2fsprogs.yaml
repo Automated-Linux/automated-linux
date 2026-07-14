@@ -34,7 +34,7 @@
       --disable-libuuid \
       --disable-fsck \
       --disable-uuidd
-    make -j{{ nproc.stdout | trim | int }}
+    make -j{{ nproc.stdout | trim | int * 2 }}
     make install
     /sbin/ldconfig
     CHROOT_EOF

@@ -29,7 +29,7 @@
     set -e
     cd /sources/{{ elfutils_version }}
     ./configure --prefix=/usr --disable-debuginfod --enable-libdebuginfod=dummy
-    make -j{{ nproc.stdout | trim | int }}
+    make -j{{ nproc.stdout | trim | int * 2 }}
     make -C libelf install
     install -vm644 config/libelf.pc /usr/lib/pkgconfig
     rm /usr/lib/libelf.a

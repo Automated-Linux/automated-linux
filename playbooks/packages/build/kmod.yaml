@@ -34,7 +34,7 @@
       --with-xz \
       --with-zstd \
       --disable-manpages
-    make -j{{ nproc.stdout | trim | int }}
+    make -j{{ nproc.stdout | trim | int * 2 }}
     make install
     for target in depmod insmod modinfo modprobe rmmod; do
       ln -sfv ../bin/kmod /usr/sbin/${target}

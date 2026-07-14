@@ -29,7 +29,7 @@
     set -e
     cd /sources/{{ attr_version }}
     ./configure --prefix=/usr --disable-static --sysconfdir=/etc --docdir=/usr/share/doc/{{ attr_version }}
-    make -j{{ nproc.stdout | trim | int }}
+    make -j{{ nproc.stdout | trim | int * 2 }}
     make install
     /sbin/ldconfig
     CHROOT_EOF

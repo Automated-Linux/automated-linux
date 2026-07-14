@@ -81,7 +81,7 @@
       changed_when: result.rc == 0
 
     - name: Build kernel Image and modules
-      ansible.builtin.command: "make -j{{ nproc.stdout | trim | int }} ARCH=arm64 Image modules"
+      ansible.builtin.command: "make -j{{ nproc.stdout | trim | int * 2 }} ARCH=arm64 Image modules"
       args:
         chdir: "{{ sources_image.mount_point }}/{{ kernel.version }}"
         creates: "{{ sources_image.mount_point }}/{{ kernel.version }}/arch/arm64/boot/Image"

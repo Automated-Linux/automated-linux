@@ -29,7 +29,7 @@
     set -e
     cd /sources/{{ libcap_version }}
     sed -i '/install.*STALIBNAME/d' libcap/Makefile
-    make -j{{ nproc.stdout | trim | int }} prefix=/usr lib=lib
+    make -j{{ nproc.stdout | trim | int * 2 }} prefix=/usr lib=lib
     make prefix=/usr lib=lib install
     /sbin/ldconfig
     CHROOT_EOF

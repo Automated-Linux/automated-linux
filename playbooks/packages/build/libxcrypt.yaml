@@ -33,7 +33,7 @@
       --disable-static \
       --disable-failure-tokens \
       --disable-werror
-    make -j{{ nproc.stdout | trim | int }}
+    make -j{{ nproc.stdout | trim | int * 2 }}
     make install
     /sbin/ldconfig
     CHROOT_EOF

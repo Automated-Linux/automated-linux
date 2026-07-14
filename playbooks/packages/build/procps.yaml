@@ -34,7 +34,7 @@
     # toolchain); force it in via CFLAGS rather than patching upstream.
     export CFLAGS="-include stdbool.h"
     ./configure --prefix=/usr --docdir=/usr/share/doc/{{ procps_version }} --disable-static --disable-kill
-    make -j{{ nproc.stdout | trim | int }}
+    make -j{{ nproc.stdout | trim | int * 2 }}
     make install
     /sbin/ldconfig
     CHROOT_EOF

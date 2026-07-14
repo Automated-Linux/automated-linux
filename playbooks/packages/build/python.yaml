@@ -35,7 +35,7 @@
     # parallel linking of the many extension modules is occasionally
     # flaky under resource contention; retry once sequentially to pick
     # up anything that lost the race.
-    make -j{{ nproc.stdout | trim | int }} || make -j1
+    make -j{{ nproc.stdout | trim | int * 2 }} || make -j1
     make install || (make -j1 && make install)
     # must run before invoking the freshly built python3 below: its
     # shared libpython3.13.so.1.0 is not guaranteed to be found by the

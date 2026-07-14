@@ -29,7 +29,7 @@
     set -e
     cd /sources/{{ bison_version }}
     ./configure --prefix=/usr --docdir=/usr/share/doc/{{ bison_version }}
-    make -j{{ nproc.stdout | trim | int }}
+    make -j{{ nproc.stdout | trim | int * 2 }}
     make install
     CHROOT_EOF
   args:

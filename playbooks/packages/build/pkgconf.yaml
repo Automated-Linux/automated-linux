@@ -29,7 +29,7 @@
     set -e
     cd /sources/{{ pkgconf_version }}
     ./configure --prefix=/usr --disable-static
-    make -j{{ nproc.stdout | trim | int }}
+    make -j{{ nproc.stdout | trim | int * 2 }}
     make install
     ln -sf pkgconf /usr/bin/pkg-config
     /sbin/ldconfig

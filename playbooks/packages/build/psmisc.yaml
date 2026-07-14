@@ -30,7 +30,7 @@
     cd /sources/{{ psmisc_version }}
     ./autogen.sh
     ./configure --prefix=/usr
-    make -j{{ nproc.stdout | trim | int }}
+    make -j{{ nproc.stdout | trim | int * 2 }}
     make install
     CHROOT_EOF
   args:

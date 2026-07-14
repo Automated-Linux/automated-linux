@@ -30,7 +30,7 @@
     cd /sources/{{ check_version }}
     autoreconf -fi
     ./configure --prefix=/usr --disable-static
-    make -j{{ nproc.stdout | trim | int }}
+    make -j{{ nproc.stdout | trim | int * 2 }}
     make install
     /sbin/ldconfig
     CHROOT_EOF

@@ -29,7 +29,7 @@
     set -e
     cd /sources/{{ gettext_version }}
     ./configure --prefix=/usr --disable-static --docdir=/usr/share/doc/{{ gettext_version }}
-    make -j{{ nproc.stdout | trim | int }}
+    make -j{{ nproc.stdout | trim | int * 2 }}
     make install
     chmod -v 0755 /usr/lib/preloadable_libintl.so 2>/dev/null || true
     /sbin/ldconfig

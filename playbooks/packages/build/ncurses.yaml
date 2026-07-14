@@ -36,7 +36,7 @@
                 --without-cxx-binding   \
                 --enable-pc-files       \
                 --with-pkg-config-libdir=/usr/lib/pkgconfig
-    make -j{{ nproc.stdout | trim | int }}
+    make -j{{ nproc.stdout | trim | int * 2 }}
     make install
     ln -sfv libncursesw.so /usr/lib/libncurses.so
     for lib in ncurses form panel menu ; do

@@ -29,7 +29,7 @@
     set -e
     cd /sources/{{ gdbm_version }}
     ./configure --prefix=/usr --disable-static --enable-libgdbm-compat
-    make -j{{ nproc.stdout | trim | int }}
+    make -j{{ nproc.stdout | trim | int * 2 }}
     make install
     /sbin/ldconfig
     CHROOT_EOF

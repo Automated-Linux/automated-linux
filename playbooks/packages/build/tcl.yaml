@@ -30,7 +30,7 @@
     cd /sources/{{ tcl_version }}/unix
     ./configure --prefix=/usr --mandir=/usr/share/man
     export LD_LIBRARY_PATH="$(pwd):${LD_LIBRARY_PATH:-}"
-    make -j{{ nproc.stdout | trim | int }}
+    make -j{{ nproc.stdout | trim | int * 2 }}
     make install
     make install-private-headers
     ln -sfv tclsh9.0 /usr/bin/tclsh

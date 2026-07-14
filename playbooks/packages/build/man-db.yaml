@@ -38,7 +38,7 @@
       --with-grap=/usr/bin/grap \
       --with-systemdtmpfilesdir= \
       --with-systemdsystemunitdir=
-    make -j{{ nproc.stdout | trim | int }}
+    make -j{{ nproc.stdout | trim | int * 2 }}
     make install
     CHROOT_EOF
   args:

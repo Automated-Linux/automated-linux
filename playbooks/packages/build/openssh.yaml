@@ -40,7 +40,7 @@
       --with-default-path=/usr/bin \
       --with-superuser-path=/usr/sbin:/usr/bin \
       --with-pid-dir=/run
-    make -j{{ nproc.stdout | trim | int }}
+    make -j{{ nproc.stdout | trim | int * 2 }}
     make install
     CHROOT_EOF
   args:

@@ -29,7 +29,7 @@
     set -e
     cd /sources/{{ zlib_version }}
     ./configure --prefix=/usr
-    make -j{{ nproc.stdout | trim | int }}
+    make -j{{ nproc.stdout | trim | int * 2 }}
     make install
     rm -f /usr/lib/libz.a
     /sbin/ldconfig

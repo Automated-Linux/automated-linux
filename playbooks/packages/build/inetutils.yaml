@@ -51,7 +51,7 @@
       --disable-rsh \
       --disable-servers \
       --disable-telnet
-    make -j{{ nproc.stdout | trim | int }}
+    make -j{{ nproc.stdout | trim | int * 2 }}
     make install
     CHROOT_EOF
   args:

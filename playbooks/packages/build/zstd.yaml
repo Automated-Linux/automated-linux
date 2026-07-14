@@ -28,7 +28,7 @@
     chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
     set -e
     cd /sources/{{ zstd_version }}
-    make -j{{ nproc.stdout | trim | int }} prefix=/usr
+    make -j{{ nproc.stdout | trim | int * 2 }} prefix=/usr
     make prefix=/usr install
     /sbin/ldconfig
     CHROOT_EOF

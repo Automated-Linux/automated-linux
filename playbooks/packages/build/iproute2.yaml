@@ -31,7 +31,7 @@
     sed -i '/^TARGETS/s/nstat//' misc/Makefile 2>/dev/null || true
     sed -i /ARPD/d Makefile 2>/dev/null || true
     rm -f man/man8/arpd.8 2>/dev/null || true
-    make -j{{ nproc.stdout | trim | int }} NETNS_RUN_DIR=/run/netns
+    make -j{{ nproc.stdout | trim | int * 2 }} NETNS_RUN_DIR=/run/netns
     make SBINDIR=/usr/sbin install
     CHROOT_EOF
   args:

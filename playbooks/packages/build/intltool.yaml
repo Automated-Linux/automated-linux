@@ -30,7 +30,7 @@
     cd /sources/{{ intltool_version }}
     sed -i 's:\\\${:\\\$\\{:' intltool-update.in
     ./configure --prefix=/usr
-    make -j{{ nproc.stdout | trim | int }}
+    make -j{{ nproc.stdout | trim | int * 2 }}
     make install
     install -v -Dm644 doc/I18N-HOWTO /usr/share/doc/{{ intltool_version }}/I18N-HOWTO
     CHROOT_EOF

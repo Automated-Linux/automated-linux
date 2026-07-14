@@ -29,7 +29,7 @@
     set -e
     cd /sources/{{ bc_version }}
     CC=gcc ./configure --prefix=/usr -G -O3 -r
-    make -j{{ nproc.stdout | trim | int }}
+    make -j{{ nproc.stdout | trim | int * 2 }}
     make install
     CHROOT_EOF
   args:

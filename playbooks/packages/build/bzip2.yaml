@@ -32,7 +32,7 @@
     sed -i "s@(PREFIX)/man@(PREFIX)/share/man@g" Makefile
     make -f Makefile-libbz2_so
     make clean
-    make -j{{ nproc.stdout | trim | int }}
+    make -j{{ nproc.stdout | trim | int * 2 }}
     make PREFIX=/usr install
     cp -av libbz2.so.* /usr/lib
     ln -sfv libbz2.so.1.0.8 /usr/lib/libbz2.so

@@ -29,7 +29,7 @@
     set -e
     cd /sources/{{ devel_checklib_version }}
     perl Makefile.PL
-    make -j{{ nproc.stdout | trim | int }}
+    make -j{{ nproc.stdout | trim | int * 2 }}
     make install
     CHROOT_EOF
   args:
