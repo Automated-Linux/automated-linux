@@ -39,11 +39,21 @@ packages:
   - ccache
 root_image:
   image: "{{ docker.workspace }}/build-images/automated-linux-root.img"
-  size: "10G"
+  # Bumped from 10G: the kernel's switch to allmodconfig (see kernel.yaml)
+  # installs a far larger /lib/modules tree than defconfig's curated
+  # subset. Only affects a *fresh* image — prepare.yaml skips creation if
+  # the .img file already exists, so this does not grow an existing
+  # 10G image; delete build-images/*.img (or manually resize2fs) to
+  # actually pick up the new size on an existing build.
+  size: "25G"
   mount_point: "/mnt/automated-linux"
 sources_image:
   image: "{{ docker.workspace }}/build-images/automated-linux-sources.img"
-  size: "20G"
+  # Bumped from 20G for the same reason: allmodconfig's build tree (object
+  # files for thousands of modules) is substantially larger than
+  # defconfig's, even with debug info disabled. Same caveat as root_image
+  # above re: existing images.
+  size: "40G"
   mount_point: "/mnt/automated-linux/sources"
 kernel:
   version: "linux-7.1.3"
