@@ -15,6 +15,39 @@
         state: directory
         mode: "0755"
 
+    - name: Query Docker Desktop's actual resource allocation
+      # docker.cpuset_cpus/docker.memory being hardcoded numbers meant they
+      # only reflected whatever Docker Desktop was given the day someone
+      # last tuned them by hand — silently stale (over- or under-using what
+      # is actually available) the moment that allocation changes. Query it
+      # instead, every run, and compute safe limits from the real current
+      # numbers.
+      community.docker.docker_host_info:
+      register: docker_host
+      when: docker.cpuset_cpus == "auto" or docker.memory == "auto"
+
+    - name: Compute safe cpuset_cpus / memory from Docker Desktop's real allocation
+      # Reserve 2 CPUs and 2GB for the Docker daemon/host overhead rather
+      # than handing the container everything Docker Desktop has — matches
+      # the existing guidance (see README) to leave headroom and avoid OOM
+      # kills during parallel builds. Minimum of 1 CPU / 1g so this never
+      # computes something invalid on a very small allocation.
+      ansible.builtin.set_fact:
+        computed_cpuset_cpus: >-
+          0-{{ [(docker_host.host_info.NCPU | int) - 2, 1] | max - 1 }}
+        computed_memory: >-
+          {{ [((docker_host.host_info.MemTotal | int) // (1024 * 1024 * 1024)) - 2, 1] | max }}g
+      when: docker.cpuset_cpus == "auto" or docker.memory == "auto"
+
+    - name: Resolve final cpuset_cpus / memory (auto-detected or explicit override)
+      ansible.builtin.set_fact:
+        resolved_cpuset_cpus: "{{ computed_cpuset_cpus if docker.cpuset_cpus == 'auto' else docker.cpuset_cpus }}"
+        resolved_memory: "{{ computed_memory if docker.memory == 'auto' else docker.memory }}"
+
+    - name: Show resolved container resource limits
+      ansible.builtin.debug:
+        msg: "cpuset_cpus={{ resolved_cpuset_cpus }} memory={{ resolved_memory }}"
+
     - name: Create and start build container
       # privileged: true is required: a minimal cap_add set (SYS_ADMIN,
       # MKNOD, SYS_CHROOT, DAC_OVERRIDE, CHOWN, FOWNER, SETUID, SETGID) plus
@@ -32,8 +65,8 @@
         restart_policy: unless-stopped
         init: true
         command: sleep infinity
-        cpuset_cpus: "{{ docker.cpuset_cpus }}"
-        memory: "{{ docker.memory }}"
+        cpuset_cpus: "{{ resolved_cpuset_cpus }}"
+        memory: "{{ resolved_memory }}"
         volumes:
           - "{{ playbook_dir }}/..:{{ docker.workspace }}"
 

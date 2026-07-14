@@ -6,8 +6,13 @@ hostname: "automated-linux"
 docker:
   container_name: "automated-linux-build"
   image: "ubuntu:24.04"
-  cpuset_cpus: "0-11"
-  memory: "18g"
+  # "auto" computes both from Docker Desktop's actual current allocation
+  # (docker.yaml queries it via docker_host_info) minus a safety margin —
+  # self-adjusts if you ever change Docker Desktop's own resource limits,
+  # instead of a number that quietly goes stale. Set an explicit value
+  # (e.g. "0-11" / "18g") to override and skip the auto-detection.
+  cpuset_cpus: "auto"
+  memory: "auto"
   workspace: "/workspace"
 packages:
   - coreutils
