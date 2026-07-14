@@ -6,7 +6,7 @@ hostname: "automated-linux"
 docker:
   container_name: "automated-linux-build"
   image: "ubuntu:24.04"
-  cpuset_cpus: "0-5"
+  cpuset_cpus: "0-11"
   memory: "18g"
   workspace: "/workspace"
 packages:
