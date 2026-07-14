@@ -508,11 +508,11 @@
         dbus_url: https://dbus.freedesktop.org/releases/dbus/dbus-1.16.2.tar.xz
 
     - name: Reset ownership of the target root to root:root
-      # prepare.yaml creates /etc, /var, /usr and /home owned by
-      # automated_user (needed at that point so the cross-toolchain
-      # build in packages/toolchain.yaml can write there as a non-root
-      # user, LFS-style) and nothing ever resets it afterwards — this
-      # is the LFS book's documented "chown -R root:root $LFS/{usr,var,etc,...}"
+      # prepare.yaml creates /etc, /var and /usr owned by automated_user
+      # (needed at that point so the cross-toolchain build in
+      # packages/toolchain.yaml can write there as a non-root user,
+      # LFS-style) and nothing ever resets it afterwards — this is the
+      # LFS book's documented "chown -R root:root $LFS/{usr,var,etc,...}"
       # step, done here since it must happen after every package is
       # installed. Individual files created by this playbook's own
       # ansible.builtin.template/file tasks (which run as root via
@@ -523,6 +523,16 @@
       # implicit root DAC-bypass and fails to write into a directory
       # it does not own, e.g. `timedatectl set-timezone` failing with
       # "Permission denied" even though it is running as uid 0.
+      #
+      # Deliberately excludes /home: it holds the automated_user's own
+      # home directory (including ~/.ansible/tmp, used by every
+      # become_user: automated task's module transfer). Recursively
+      # chowning it to root:root here would silently break every
+      # subsequent become_user: automated task on this image — e.g. a
+      # later standalone re-run of packages/toolchain.yaml — with
+      # "Failed to create remote module tmp path ... Permission denied",
+      # since prepare.yaml only re-asserts ownership of the
+      # /home/automated directory itself on re-run, not recursively.
       #
       # Uses a single native `chown -R` shell command rather than
       # ansible.builtin.file's recurse (which walks and chowns one
@@ -535,7 +545,7 @@
       # sources_image submount for no reason.
       ansible.builtin.shell: |
         set -e
-        chroot {{ root_image.mount_point }} /bin/bash -c 'chown -R root:root /etc /var /usr /home'
+        chroot {{ root_image.mount_point }} /bin/bash -c 'chown -R root:root /etc /var /usr'
       args:
         executable: /bin/bash
       register: result
