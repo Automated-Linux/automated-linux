@@ -150,6 +150,27 @@
     state: link
     force: true
 
+- name: Ensure /etc/systemd/resolved.conf.d exists
+  ansible.builtin.file:
+    path: "{{ root_image.mount_point }}/etc/systemd/resolved.conf.d"
+    state: directory
+    mode: "0755"
+
+- name: Disable DNSSEC validation
+  # QEMU's user-mode (SLIRP) networking exposes a built-in DNS forwarder
+  # at the gateway (10.0.2.3) that just relays to the host's resolver but
+  # doesn't relay DNSSEC signatures correctly — systemd-resolved's default
+  # DNSSEC=allow-downgrade still attempts validation against it and hard
+  # fails every single lookup with "DNSSEC validation failed: no-signature"
+  # (verified: `resolvectl query google.com` fails until this is set,
+  # succeeds immediately after). There's no real DNSSEC guarantee to lose
+  # here either way — SLIRP's forwarder isn't a validating resolver to
+  # begin with, so disabling validation just stops fighting it.
+  ansible.builtin.template:
+    src: rootfs/etc/systemd/resolved.conf.d/10-disable-dnssec.conf.j2
+    dest: "{{ root_image.mount_point }}/etc/systemd/resolved.conf.d/10-disable-dnssec.conf"
+    mode: "0644"
+
 - name: Enable systemd-networkd and systemd-resolved
   ansible.builtin.shell: |
     set -e
