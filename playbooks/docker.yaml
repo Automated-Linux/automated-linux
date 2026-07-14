@@ -4,8 +4,6 @@
   hosts: localhost
   connection: local
   gather_facts: false
-  collections:
-    - community.docker
 
   vars_files:
     - ../vars/automated-linux.yaml

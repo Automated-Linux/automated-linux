@@ -4,6 +4,8 @@ Automated-Linux builds a full Linux system **from source** (LFS-style) entirely 
 
 Target architecture: **aarch64** (matches Apple Silicon, so QEMU boots with native HVF acceleration).
 
+Every push/PR touching `playbooks/` or `vars/` runs [`ansible-lint` + `ansible-playbook --syntax-check`](.github/workflows/lint.yml) — a fast, no-build correctness gate (the actual LFS build takes hours and needs privileged Docker, so it isn't run in CI).
+
 ## How it works
 
 The controller (Ansible, run from your Mac) drives a privileged Ubuntu Docker container entirely over the `community.docker` connection plugin — no manual `docker exec` needed anywhere in the pipeline, including the chroot phase (it runs `chroot` as a plain command through that same connection). The container mounts two raw disk images (`build-images/automated-linux-root.img` and `automated-linux-sources.img`) as loopback ext4 filesystems; these images **persist on your Mac's disk** independently of the container, so build progress survives container recreation — the container itself is fully disposable and gets deleted automatically at the end of a full run.

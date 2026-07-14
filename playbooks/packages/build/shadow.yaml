@@ -27,6 +27,7 @@
     set -e
     chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
     set -e
+    set -o pipefail
     cd /sources/{{ shadow_version }}
     sed -i 's/groups$(EXEEXT) //' src/Makefile.in
     ./configure --sysconfdir=/etc \
