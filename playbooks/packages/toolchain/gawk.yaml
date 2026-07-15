@@ -59,6 +59,24 @@
     - result.rc != 0
   changed_when: result.rc == 0
 
+- name: Create awk symbolic link
+  # Most downstream ./configure scripts call $(AWK), correctly resolved
+  # to gawk by AC_PROG_AWK regardless of this symlink, but GCC's own
+  # build (gcc/Makefile.in's s-options rule, which generates options.cc)
+  # shells out to a literal `awk` in a couple of places instead — with
+  # no /usr/bin/awk, PATH lookup silently falls through to nothing, and
+  # with some other awk on PATH instead of gawk the generated C is
+  # silently corrupted (e.g. "#error 0Wabsolute-value does not have a
+  # Var() flag" instead of "-Wabsolute-value ..."), only surfacing as a
+  # compile failure deep into gcc's build.
+  become: true
+  become_user: "{{ automated_user }}"
+  ansible.builtin.file:
+    src: gawk
+    dest: "{{ root_image.mount_point }}/usr/bin/awk"
+    state: link
+    force: true
+
 - name: Remove gawk directory
   become: true
   become_user: "{{ automated_user }}"

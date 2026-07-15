@@ -6,11 +6,15 @@
 # community.general.chroot connection plugin required. Every package is
 # built natively (not cross-compiled) inside the chroot with the
 # gcc/binutils/glibc already produced by packages/toolchain.yaml and
-# installed into {{ root_image.mount_point }}/usr. Packages already built
-# as temporary bootstrap tools by packages/toolchain.yaml (binutils,
-# gcc, glibc, gmp, mpfr, mpc, libstdc++, m4, ncurses, bash, coreutils,
-# diffutils, file, findutils, gawk, grep, gzip, make, patch, sed, tar, xz)
-# are not rebuilt here. systemd is wired up as the final PID 1.
+# installed into {{ root_image.mount_point }}/usr. gcc itself is rebuilt
+# once more here (build/gcc.yaml, with --enable-bootstrap) to get a
+# self-hosted, self-optimized compiler partway through this file, before
+# the bulk of the native packages that follow it; every other package
+# already built as a temporary bootstrap tool by packages/toolchain.yaml
+# (binutils, glibc, gmp, mpfr, mpc,
+# libstdc++, m4, ncurses, bash, coreutils, diffutils, file, findutils,
+# gawk, grep, gzip, make, patch, sed, tar, xz) is not rebuilt here.
+# systemd is wired up as the final PID 1.
 - name: Build userland inside chroot
   hosts: "{{ host | default(docker.container_name) }}"
   gather_facts: false
@@ -206,6 +210,24 @@
         shadow_version: shadow-4.19.4
         shadow_url: https://github.com/shadow-maint/shadow/releases/download/4.19.4/shadow-4.19.4.tar.xz
 
+    - name: Import gcc tasks
+      # final self-hosted, --enable-bootstrap rebuild of gcc, replacing the
+      # --disable-bootstrap cross-build installed by
+      # packages/toolchain.yaml's gcc_stage2.yaml; must land before every
+      # native package below this point, all of which compile against it
+      # (packages above this point only needed a working, not necessarily
+      # bootstrapped, gcc).
+      ansible.builtin.import_tasks: build/gcc.yaml
+      vars:
+        gcc_version: gcc-15.3.0
+        gcc_url: https://ftpmirror.gnu.org/gnu/gcc/gcc-15.3.0/gcc-15.3.0.tar.xz
+        mpfr_version: mpfr-4.2.2
+        mpfr_url: https://ftpmirror.gnu.org/gnu/mpfr/mpfr-4.2.2.tar.xz
+        gmp_version: gmp-6.3.0
+        gmp_url: https://ftpmirror.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz
+        mpc_version: mpc-1.4.1
+        mpc_url: https://ftpmirror.gnu.org/gnu/mpc/mpc-1.4.1.tar.xz
+
     - name: Import libtool tasks
       ansible.builtin.import_tasks: build/libtool.yaml
       vars:
@@ -350,12 +372,6 @@
         # still ships them.
         openssl_version: openssl-3.6.3
         openssl_url: https://github.com/openssl/openssl/releases/download/openssl-3.6.3/openssl-3.6.3.tar.gz
-
-    - name: Import openssh tasks
-      ansible.builtin.import_tasks: build/openssh.yaml
-      vars:
-        openssh_version: openssh-10.4p1
-        openssh_url: https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-10.4p1.tar.gz
 
     - name: Import kmod tasks
       ansible.builtin.import_tasks: build/kmod.yaml
@@ -505,6 +521,12 @@
       vars:
         dbus_version: dbus-1.16.2
         dbus_url: https://dbus.freedesktop.org/releases/dbus/dbus-1.16.2.tar.xz
+
+    - name: Import openssh tasks
+      ansible.builtin.import_tasks: build/openssh.yaml
+      vars:
+        openssh_version: openssh-10.4p1
+        openssh_url: https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-10.4p1.tar.gz
 
     - name: Reset ownership of the target root to root:root
       # prepare.yaml creates /etc, /var and /usr owned by automated_user

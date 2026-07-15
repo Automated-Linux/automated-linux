@@ -31,8 +31,13 @@
         createhome: false
 
     - name: Check for existing images
+      # get_checksum: false — only stat.exists is used below (when: not
+      # item.stat.exists); the default sha1 checksum requires reading the
+      # entire file, which for these multi-GB disk images turns a trivial
+      # existence check into a multi-minute stall on every single run.
       ansible.builtin.stat:
         path: "{{ item.image }}"
+        get_checksum: false
       register: existing_images
       with_items:
         - "{{ root_image }}"

@@ -134,6 +134,7 @@
     --enable-default-ssp                           \
     --disable-nls                                  \
     --disable-multilib                             \
+    --disable-bootstrap                            \
     --disable-libatomic                            \
     --disable-libgomp                              \
     --disable-libquadmath                          \

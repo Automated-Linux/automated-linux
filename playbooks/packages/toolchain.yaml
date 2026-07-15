@@ -156,10 +156,21 @@
         findutils_url: https://ftpmirror.gnu.org/gnu/findutils/findutils-4.10.0.tar.xz
 
     - name: Import gawk tasks
+      # Pinned below 5.4.1: that release has a severe interpreter
+      # regression where reading an uninitialized array element returns ""
+      # the first time but "0" on every subsequent read, with nothing else
+      # happening in between (reproduced with a 3-line BEGIN block; not a
+      # PMA/allocator or optimizer issue, --disable-pma and --no-optimize
+      # don't help). This silently breaks the extremely common
+      # `if (arr[x] == "")` idiom, which is exactly what GCC's own
+      # gcc/opt-read.awk + optc-gen.awk rely on to generate options.cc,
+      # producing corrupted output ("#error 0Wfoo does not have a Var()
+      # flag" for dozens of warning options) deep into the build/gcc.yaml
+      # bootstrap. 5.3.2 does not have this bug.
       ansible.builtin.import_tasks: toolchain/gawk.yaml
       vars:
-        gawk_version: gawk-5.4.1
-        gawk_url: https://ftpmirror.gnu.org/gnu/gawk/gawk-5.4.1.tar.xz
+        gawk_version: gawk-5.3.2
+        gawk_url: https://ftpmirror.gnu.org/gnu/gawk/gawk-5.3.2.tar.xz
 
     - name: Import grep tasks
       ansible.builtin.import_tasks: toolchain/grep.yaml

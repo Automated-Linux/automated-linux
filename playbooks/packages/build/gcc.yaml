@@ -1,0 +1,104 @@
+# code: language=ansible
+---
+# Final rebuild of gcc, natively inside the chroot, with a real 3-stage
+# --enable-bootstrap (stage2/stage3 comparison). packages/toolchain.yaml's
+# gcc_stage2.yaml builds gcc --disable-bootstrap because it runs outside
+# the chroot against a sysroot, where stage2/stage3 binaries can't be
+# executed reliably; this is the self-hosted rebuild, using the toolchain
+# gcc_stage2.yaml already installed into {{ root_image.mount_point }}/usr,
+# that produces the fully bootstrapped, self-optimized compiler the rest
+# of packages/build.yaml is native-compiled with.
+- name: Download gcc package
+  ansible.builtin.get_url:
+    url: "{{ gcc_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ gcc_url | basename }}"
+    mode: "0644"
+  register: get_url_result
+  retries: 5
+  delay: 10
+  until: get_url_result is succeeded
+
+- name: Download mpfr package
+  ansible.builtin.get_url:
+    url: "{{ mpfr_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ mpfr_url | basename }}"
+    mode: "0644"
+  register: get_url_result
+  retries: 5
+  delay: 10
+  until: get_url_result is succeeded
+
+- name: Download gmp package
+  ansible.builtin.get_url:
+    url: "{{ gmp_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ gmp_url | basename }}"
+    mode: "0644"
+  register: get_url_result
+  retries: 5
+  delay: 10
+  until: get_url_result is succeeded
+
+- name: Download mpc package
+  ansible.builtin.get_url:
+    url: "{{ mpc_url }}"
+    dest: "{{ sources_image.mount_point }}/{{ mpc_url | basename }}"
+    mode: "0644"
+  register: get_url_result
+  retries: 5
+  delay: 10
+  until: get_url_result is succeeded
+
+- name: Extract gcc, mpfr, gmp and mpc packages
+  ansible.builtin.shell: |
+    chroot {{ root_image.mount_point }} /bin/bash -c '
+    [ -d /sources/{{ gcc_version }} ] || tar xf /sources/{{ gcc_url | basename }} -C /sources
+    [ -d /sources/{{ mpfr_version }} ] || tar xf /sources/{{ mpfr_url | basename }} -C /sources
+    [ -d /sources/{{ gmp_version }} ] || tar xf /sources/{{ gmp_url | basename }} -C /sources
+    [ -d /sources/{{ mpc_version }} ] || tar xf /sources/{{ mpc_url | basename }} -C /sources
+    ln -sfn /sources/{{ mpfr_version }} /sources/{{ gcc_version }}/mpfr
+    ln -sfn /sources/{{ gmp_version }} /sources/{{ gcc_version }}/gmp
+    ln -sfn /sources/{{ mpc_version }} /sources/{{ gcc_version }}/mpc
+    mkdir -p /sources/{{ gcc_version }}/build
+    '
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Configure, bootstrap, build and install gcc
+  ansible.builtin.shell: |
+    set -e
+    chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
+    set -e
+    cd /sources/{{ gcc_version }}/build
+    ../configure \
+      --prefix=/usr \
+      --enable-default-pie \
+      --enable-default-ssp \
+      --enable-bootstrap \
+      --disable-multilib \
+      --enable-languages=c,c++
+    make -j{{ nproc.stdout | trim | int * 2 }}
+    make install
+    rm -f /usr/bin/cc
+    ln -sf gcc /usr/bin/cc
+    /sbin/ldconfig
+    CHROOT_EOF
+  args:
+    executable: /bin/bash
+  register: result
+  failed_when:
+    - result.rc != 0
+  changed_when: result.rc == 0
+
+- name: Remove gcc, mpfr, gmp and mpc source directories
+  ansible.builtin.file:
+    state: absent
+    path: "{{ sources_image.mount_point }}/{{ item }}"
+  with_items:
+    - "{{ gcc_version }}"
+    - "{{ mpfr_version }}"
+    - "{{ gmp_version }}"
+    - "{{ mpc_version }}"

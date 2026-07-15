@@ -47,6 +47,8 @@
   register: result
   args:
     chdir: "{{ sources_image.mount_point }}/{{ binutils_version }}/build"
+  environment:
+    PATH: "{{ root_image.mount_point }}/tools/bin:/usr/bin"
   failed_when:
     - result.rc != 0
   changed_when: result.rc == 0
@@ -59,6 +61,8 @@
   register: result
   args:
     chdir: "{{ sources_image.mount_point }}/{{ binutils_version }}/build"
+  environment:
+    PATH: "{{ root_image.mount_point }}/tools/bin:/usr/bin"
   failed_when:
     - result.rc != 0
   changed_when: result.rc == 0
@@ -71,6 +75,8 @@
   register: result
   args:
     chdir: "{{ sources_image.mount_point }}/{{ binutils_version }}/build"
+  environment:
+    PATH: "{{ root_image.mount_point }}/tools/bin:/usr/bin"
   failed_when:
     - result.rc != 0
   changed_when: result.rc == 0
