@@ -64,14 +64,18 @@
       # friends on every single compile line despite DEBUG_KERNEL=n) — each
       # sanitizer/instrumentation framework needs disabling explicitly.
       #
-      # Separately: this pipeline boots the kernel directly via QEMU with no
-      # initramfs (root=/dev/vda straight off the kernel command line), so
-      # whatever driver mounts the root filesystem MUST be built directly
-      # into the kernel Image — it can never be a loadable module, since
-      # there is nothing to load it before root is mounted. allmodconfig
-      # left unchecked would turn these into modules like everything else,
-      # which would boot-loop with "unable to mount root fs". Force them
-      # back to built-in explicitly.
+      # Separately: booting now goes through GRUB + an initramfs whose /init
+      # is PID 1 (see playbooks/initramfs.yaml and templates/initramfs/init.sh.j2),
+      # not a direct root=/dev/vda kernel command line — but the same
+      # built-in-vs-module problem still applies one level up: nothing can
+      # load a kernel module before /init itself runs, so both the
+      # hardware/filesystem drivers /init depends on (virtio-blk, ext4, ...)
+      # and CONFIG_BINFMT_SCRIPT (the kernel's own support for exec'ing a
+      # `#!/bin/bash` script as PID 1 — without this, the kernel can't even
+      # start /init and panics with "Failed to execute /init (error -8)")
+      # must be built directly into the Image. allmodconfig left unchecked
+      # would turn these into modules like everything else. Force them back
+      # to built-in explicitly.
       ansible.builtin.shell: |
         set -e
         ./scripts/config --disable CONFIG_STAGING
@@ -106,12 +110,30 @@
         ./scripts/config --enable CONFIG_VIRTIO_PCI
         ./scripts/config --enable CONFIG_VIRTIO_BLK
         ./scripts/config --enable CONFIG_EXT4_FS
+        # /boot/efi is mounted from a plain fstab entry very early in real
+        # (post-switch_root) boot, same as the root fs — but unlike root,
+        # it is not resolved by our own initramfs /init, so there is no
+        # explicit modprobe step for it. The kernel own request_module
+        # auto-load for an unknown fs type either does not fire in time or
+        # fails silently in this early context (mount exits 32 with no
+        # fat/vfat modprobe activity anywhere in the boot log), so — same
+        # reasoning as EXT4_FS above — this must be built in, not a module.
+        ./scripts/config --enable CONFIG_FAT_FS
+        ./scripts/config --enable CONFIG_VFAT_FS
+        # vfat default codepage (independent of CONFIG_NLS_DEFAULT and
+        # iocharset) is cp437 — without this built in too, mount still
+        # fails at runtime (FAT-fs: codepage cp437 not found) even though
+        # FAT_FS/VFAT_FS themselves are now built in.
+        ./scripts/config --enable CONFIG_NLS_CODEPAGE_437
+        ./scripts/config --enable CONFIG_NLS_ISO8859_1
         ./scripts/config --enable CONFIG_SERIAL_AMBA_PL011
         ./scripts/config --enable CONFIG_SERIAL_AMBA_PL011_CONSOLE
         ./scripts/config --enable CONFIG_EFI
         ./scripts/config --enable CONFIG_EFI_PARTITION
         ./scripts/config --enable CONFIG_BLK_DEV_INITRD
         ./scripts/config --enable CONFIG_RD_GZIP
+        ./scripts/config --enable CONFIG_BINFMT_SCRIPT
+        ./scripts/config --enable CONFIG_BINFMT_ELF
         make ARCH=arm64 olddefconfig
       args:
         chdir: "{{ sources_image.mount_point }}/{{ kernel.version }}"

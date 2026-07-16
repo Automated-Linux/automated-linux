@@ -34,6 +34,7 @@ packages:
   - ccache
   - parted
   - dosfstools
+  - cpio
 root_image:
   image: "{{ docker.workspace }}/build-images/automated-linux-root.img"
   size: "25G"

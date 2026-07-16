@@ -16,7 +16,16 @@
   vars_files:
     - ../vars/automated-linux.yaml
   vars:
-    initramfs_staging: "{{ docker.workspace }}/initramfs-build"
+    # Deliberately NOT under {{ docker.workspace }} (/workspace): that's a
+    # grpcfuse (gRPC-based FUSE host-sharing) mount, and its metadata cache
+    # isn't coherent enough for the hundreds of rapid-fire file creates the
+    # kernel modules copy below does — a handful of files intermittently
+    # phantom-"already exist" mid-copy even though the directory was just
+    # reset from empty. Nothing outside this container ever needs to see
+    # this scratch tree (only the final {{ boot.initramfs }} artifact,
+    # written into the root image, matters afterward), so container-local
+    # storage avoids the race entirely.
+    initramfs_staging: "/var/tmp/initramfs-build"
 
   tasks:
     # Mirrors the mount tasks in packages/build.yaml: needed so `chroot
@@ -96,17 +105,25 @@
           [ -e "$ROOT$bin" ] || return 0
           [ -e "$STAGE$bin" ] && return 0
           mkdir -p "$STAGE$(dirname "$bin")"
-          cp -a "$ROOT$bin" "$STAGE$bin"
+          # -L dereferences: util-linux's libs (e.g. /usr/lib/libmount.so.1)
+          # are themselves symlinks to a versioned file (libmount.so.1.1.0)
+          # on the real system — plain -a would copy the symlink but never
+          # its target, leaving a dangling link the dynamic linker can't
+          # actually open, so every dynamically-linked binary in the
+          # initramfs would fail with "cannot open shared object file"
+          # despite ldd reporting the path as found.
+          cp -aL "$ROOT$bin" "$STAGE$bin"
           { chroot "$ROOT" /usr/bin/ldd "$bin" 2>/dev/null || true; } | { grep -oE '/[^ ]+' || true; } | while read -r lib; do
             [ -e "$STAGE$lib" ] && continue
             mkdir -p "$STAGE$(dirname "$lib")"
-            cp -a "$ROOT$lib" "$STAGE$lib" 2>/dev/null || true
+            cp -aL "$ROOT$lib" "$STAGE$lib" 2>/dev/null || true
           done
         }
 
         for b in /usr/bin/bash /usr/bin/mount /usr/sbin/switch_root \
-                 /usr/bin/blkid /usr/sbin/modprobe /usr/sbin/depmod \
-                 /usr/sbin/insmod /usr/lib/systemd/systemd-udevd /usr/bin/udevadm; do
+                 /usr/sbin/blkid /usr/sbin/modprobe /usr/sbin/depmod \
+                 /usr/sbin/insmod /usr/lib/systemd/systemd-udevd /usr/bin/udevadm \
+                 /usr/bin/mkdir /usr/bin/cat /usr/bin/sleep; do
           copy_closure "$b"
         done
       args:
@@ -114,16 +131,53 @@
       register: result
       changed_when: true
 
+    - name: Symlink sh to bash in initramfs (needed for the FATAL fallback shell in init.sh.j2)
+      # copy_closure above copies exact file paths only, not other symlinks
+      # (like the root image's own /usr/bin/sh -> bash) that happen to
+      # point at them — without this, `exec /bin/sh` in init.sh.j2's error
+      # path would itself fail to find a shell to drop into.
+      ansible.builtin.file:
+        src: bash
+        dest: "{{ initramfs_staging }}/usr/bin/sh"
+        state: link
+
     - name: Copy udev rules/helpers tree (needed for coldplug modalias matching)
       ansible.builtin.command:
         cmd: "cp -a {{ root_image.mount_point }}/usr/lib/udev {{ initramfs_staging }}/usr/lib/udev"
       changed_when: true
+
+    - name: Create modules directory in initramfs staging
+      # cp -a below only creates the final path component itself, not
+      # missing intermediate parents — usr/lib/modules doesn't exist yet
+      # (only usr/bin, usr/sbin, usr/lib were made by the skeleton task).
+      ansible.builtin.file:
+        path: "{{ initramfs_staging }}/usr/lib/modules"
+        state: directory
+        mode: "0755"
 
     - name: Copy kernel modules tree
       ansible.builtin.command:
         cmd: >-
           cp -a {{ root_image.mount_point }}/lib/modules/{{ kernel_release }}
           {{ initramfs_staging }}/usr/lib/modules/{{ kernel_release }}
+      changed_when: true
+
+    - name: Generate ld.so.cache for the initramfs's own copied libraries
+      # Without this, the dynamic linker has no cache to consult and falls
+      # back to its hardcoded default search paths, which do not include
+      # /usr/lib — util-linux (mount, blkid, ...) was built with
+      # --libdir=/usr/lib (see packages/build/util-linux.yaml), so every
+      # dynamically-linked binary in the initramfs fails at runtime with
+      # "error while loading shared libraries: libmount.so.1: cannot open
+      # shared object file" even though the .so is physically right there.
+      # The real root image doesn't hit this because its own util-linux
+      # install step runs ldconfig itself. -r treats initramfs_staging as
+      # the root for both scanning lib dirs and writing etc/ld.so.cache;
+      # using the root image's own ldconfig binary (run directly, not
+      # chrooted) keeps this consistent with the target's glibc/cache
+      # format rather than relying on any host tool.
+      ansible.builtin.command:
+        cmd: "{{ root_image.mount_point }}/sbin/ldconfig -r {{ initramfs_staging }}"
       changed_when: true
 
     - name: Install /init script
@@ -161,6 +215,33 @@
         dest: "{{ root_image.mount_point }}/boot/initramfs.img"
         remote_src: true
         mode: "0644"
+
+    - name: Ensure /boot/efi directory exists in root image
+      ansible.builtin.file:
+        path: "{{ boot.esp_mount_point }}"
+        state: directory
+        mode: "0755"
+
+    - name: Find loop device for root image
+      # Deliberately re-derived here rather than relying on the
+      # root_loop_device fact set in prepare.yaml persisting across plays —
+      # this file is meant to be safe to run standalone too (see header
+      # comment), not just chained after prepare.yaml in the same run.
+      ansible.builtin.shell: |
+        set -o pipefail
+        losetup -j {{ root_image.image }} | cut -d: -f1
+      args:
+        executable: /bin/bash
+      register: root_loop
+      changed_when: false
+
+    - name: Mount EFI System Partition # noqa: syntax-check[unknown-module]
+      become: true
+      ansible.posix.mount:
+        path: "{{ boot.esp_mount_point }}"
+        src: "{{ root_loop.stdout }}p1"
+        fstype: "vfat"
+        state: "ephemeral"
 
     - name: Install GRUB to the EFI System Partition
       # --removable writes the fallback EFI/BOOT/BOOTAA64.EFI path instead of

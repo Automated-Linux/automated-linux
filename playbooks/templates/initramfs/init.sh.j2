@@ -21,9 +21,13 @@ mount -t tmpfs tmpfs /run
 # its modalias and modprobes the right driver — the identical mechanism
 # systemd-udevd runs again, permanently, once the real root is switched
 # into (see the enable step in packages/build/systemd.yaml) for every other
-# piece of hardware (NICs, USB, GPU, ...). --daemon forks udevd into the
-# background so this script can keep going.
-/usr/lib/systemd/systemd-udevd --daemon
+# piece of hardware (NICs, USB, GPU, ...). Backgrounded with a plain shell
+# `&`, not --daemon: modern systemd-udevd (261.1 here) no longer
+# self-daemonizes on --daemon — it expects a service manager to background
+# it, which doesn't exist yet in this bare initramfs — so with --daemon
+# alone it just runs in the foreground and this script (and boot) hangs
+# forever waiting for a process that never exits.
+/usr/lib/systemd/systemd-udevd &
 udevadm trigger --type=subsystems --action=add
 udevadm trigger --type=devices --action=add
 udevadm settle --timeout=30
@@ -54,7 +58,7 @@ if [ -n "$blkid_flags" ]; then
   # moment ago may not have its module fully bound and its blkid-visible
   # filesystem superblock readable yet, so poll briefly instead of trying
   # exactly once.
-  for _ in $(seq 1 50); do
+  for ((_i = 0; _i < 50; _i++)); do
     rootdev=$(blkid $blkid_flags 2>/dev/null) && [ -n "$rootdev" ] && break
     sleep 0.2
   done
