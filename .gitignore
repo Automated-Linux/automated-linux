@@ -13,3 +13,4 @@ playbooks/sources/*
 build-images
 .claude
 .ansible
+initramfs-build
