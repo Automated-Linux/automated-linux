@@ -33,6 +33,15 @@
       register: qemu_prefix
       changed_when: false
 
+    - name: Check whether Homebrew ships an OVMF variable store template
+      # Newer Homebrew qemu bottles (e.g. 11.0.2) dropped
+      # edk2-aarch64-vars.fd from the package and only ship the code.fd —
+      # fall back to synthesizing a blank vars store below when that
+      # happens.
+      ansible.builtin.stat:
+        path: "{{ qemu_prefix.stdout }}/share/qemu/edk2-aarch64-vars.fd"
+      register: vars_template
+
     - name: Copy a fresh writable OVMF variable store
       # OVMF's pflash vars file is the UEFI NVRAM; Homebrew's copy is a
       # read-only template. --removable (see the grub-install task in
@@ -45,6 +54,26 @@
         remote_src: true
         force: true
         mode: "0644"
+      when: vars_template.stat.exists
+
+    - name: Determine OVMF code store size
+      # A blank vars store must match the code store's size for OVMF to
+      # accept it, so size the synthesized file off edk2-aarch64-code.fd
+      # (which Homebrew does still ship) instead of hardcoding it.
+      ansible.builtin.stat:
+        path: "{{ qemu_prefix.stdout }}/share/qemu/edk2-aarch64-code.fd"
+      register: code_template
+      when: not vars_template.stat.exists
+
+    - name: Synthesize a fresh blank OVMF variable store
+      # All-zero bytes is exactly what a blank/uninitialized NVRAM store
+      # looks like to OVMF, so this is equivalent to (not a workaround for)
+      # the template Homebrew used to ship — OVMF initializes it on first
+      # boot either way.
+      ansible.builtin.command:
+        cmd: "dd if=/dev/zero of={{ playbook_dir }}/../build-images/edk2-aarch64-vars.fd bs=1m count={{ (code_template.stat.size / 1048576) | int }}"
+      when: not vars_template.stat.exists
+      changed_when: true
 
     - name: Remove the build container
       # A loop-mounted image or a stray interactive shell inside the
@@ -78,13 +107,15 @@
     - name: Repair the root partition filesystem
       # Root is now partition 2 of a GPT disk, not the whole image file
       # directly — e2fsck can no longer target automated-linux-root.img
-      # itself once it holds a partition table. /dev/rdiskN (raw/character
-      # device) rather than /dev/diskN is the usual recommendation for
-      # tools like fsck that do their own block I/O, to avoid macOS's
-      # buffer cache.
+      # itself once it holds a partition table. Deliberately using
+      # /dev/diskN (buffered) rather than /dev/rdiskN (raw/character) here:
+      # e2fsck's final write of filesystem info hits hdiutil's raw-disk
+      # path with "Invalid argument" (alignment restrictions on
+      # CRawDiskImage), rc 9 — going through the buffer cache avoids that
+      # at the cost of speed, which doesn't matter for a one-shot repair.
       ansible.builtin.command: >-
         {{ e2fsprogs_prefix.stdout }}/sbin/e2fsck -fy
-        {{ repair_disk_attach.stdout | replace('/dev/disk', '/dev/rdisk') }}s2
+        {{ repair_disk_attach.stdout }}s2
       register: e2fsck_result
       changed_when: "'FILE SYSTEM WAS MODIFIED' in e2fsck_result.stdout"
       failed_when: e2fsck_result.rc > 1
