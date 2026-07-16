@@ -97,40 +97,9 @@
         ./scripts/config --disable CONFIG_FTRACE_STARTUP_TEST
         ./scripts/config --disable CONFIG_RCU_TRACE
         ./scripts/config --disable CONFIG_LATENCYTOP
-        # allmodconfig also builds in legacy x86 ISA Plug-and-Play probing
-        # (drivers/pnp/isapnp), which nothing gates off for arm64; on the
-        # QEMU virt machine there is no legacy ISA port I/O space, so the
-        # isapnp port probing (logic_outb) took a translation fault and
-        # panicked at boot, before PID 1 ever reached init - verified via
-        # the serial console boot test (qemu.yaml), which caught this as a
-        # kernel Oops with no login prompt.
         ./scripts/config --disable CONFIG_ISAPNP
         ./scripts/config --disable CONFIG_PNP
-        # allmodconfig also enables CONFIG_VIRTIO_DEBUG (debugfs
-        # introspection for virtio devices, drivers/virtio/virtio_debug.c
-        # — pure development tooling, gated by its own bool, not caught by
-        # any of the CONFIG_DEBUG_KERNEL-adjacent disables above). This
-        # kernel release's unregister_virtio_device() (drivers/virtio/
-        # virtio.c) calls device_unregister(&dev->dev) — which frees dev
-        # via the device's release callback — and only afterwards calls
-        # virtio_debug_device_exit(dev) on that now-freed pointer: a
-        # use-after-free that panicked every boot the instant the virtio
-        # block device (root disk) was registered, confirmed by tracing
-        # the SLAB poison pattern (0x6b) in the faulting address back to
-        # this exact call ordering.
         ./scripts/config --disable CONFIG_VIRTIO_DEBUG
-        # allmodconfig also enables the full interactive kernel debugger
-        # (menuconfig KGDB -> KGDB_KDB -> KDB_KEYBOARD), which shares the
-        # same serial console this pipeline boots and logs into
-        # (ttyAMA0). None of these symbol names contain
-        # DEBUG/TEST/SELFTEST/DEBUGFS, so the name-pattern sweep below
-        # cannot catch them. Confirmed the cause of a boot hang: the
-        # automated boot test (qemu.yaml) sent ordinary keystrokes over
-        # that same console for the login sequence, one of which KDB
-        # interpreted as a break-in request ("Entering kdb ... due to
-        # Keyboard Entry"), which then blocked normal boot and, in the
-        # process, threw off virtio-blk device enumeration order badly
-        # enough that root=/dev/vda no longer matched any device.
         ./scripts/config --disable CONFIG_KGDB
         ./scripts/config --enable CONFIG_DEBUG_INFO_NONE
         ./scripts/config --enable CONFIG_VIRTIO_MMIO
@@ -139,6 +108,10 @@
         ./scripts/config --enable CONFIG_EXT4_FS
         ./scripts/config --enable CONFIG_SERIAL_AMBA_PL011
         ./scripts/config --enable CONFIG_SERIAL_AMBA_PL011_CONSOLE
+        ./scripts/config --enable CONFIG_EFI
+        ./scripts/config --enable CONFIG_EFI_PARTITION
+        ./scripts/config --enable CONFIG_BLK_DEV_INITRD
+        ./scripts/config --enable CONFIG_RD_GZIP
         make ARCH=arm64 olddefconfig
       args:
         chdir: "{{ sources_image.mount_point }}/{{ kernel.version }}"

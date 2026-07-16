@@ -1,0 +1,69 @@
+#!/bin/bash
+# PID 1 inside the initramfs. Its only job is to find the real root
+# filesystem — which may be virtio-blk under QEMU or a completely different
+# controller (NVMe, AHCI, USB, SD/MMC, ...) on real hardware — and hand off
+# to the real /sbin/init via switch_root. Styled after
+# packages/build/templates/rootfs/sbin/init.j2: plain bash, defensive,
+# comments on ordering pitfalls rather than a docstring.
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+# devtmpfs, not udev, is what actually creates /dev/<blockdev> nodes at the
+# kernel level the instant a driver registers a device; udev (started
+# below) only augments them with by-label/by-uuid symlinks and permissions.
+# Skipping this mount would leave /dev empty no matter how long udev runs.
+mount -t devtmpfs devtmpfs /dev
+mkdir -p /dev/pts /run
+mount -t devpts devpts /dev/pts
+mount -t tmpfs tmpfs /run
+
+# Coldplug: this is the actual "detect the hardware and load the matching
+# module" step. udev matches each device that shows up under /sys against
+# its modalias and modprobes the right driver — the identical mechanism
+# systemd-udevd runs again, permanently, once the real root is switched
+# into (see the enable step in packages/build/systemd.yaml) for every other
+# piece of hardware (NICs, USB, GPU, ...). --daemon forks udevd into the
+# background so this script can keep going.
+/usr/lib/systemd/systemd-udevd --daemon
+udevadm trigger --type=subsystems --action=add
+udevadm trigger --type=devices --action=add
+udevadm settle --timeout=30
+
+# Parse root=LABEL=xxx / root=UUID=xxx / root=/dev/xxx off the kernel
+# command line (set by grub.cfg, see the GRUB install task in
+# packages/build/systemd.yaml) rather than hardcoding a device path or
+# label at build time — this is what makes the same initramfs work whether
+# root ends up as /dev/vda2 (QEMU virtio) or /dev/nvme0n1p2 (real hardware).
+root_arg=""
+for arg in $(cat /proc/cmdline); do
+  case "$arg" in
+    root=*) root_arg="${arg#root=}" ;;
+  esac
+done
+
+blkid_flags=""
+literal_dev=""
+case "$root_arg" in
+  LABEL=*) blkid_flags="-L ${root_arg#LABEL=}" ;;
+  UUID=*)  blkid_flags="-U ${root_arg#UUID=}" ;;
+  *)       literal_dev="$root_arg" ;;
+esac
+
+rootdev="$literal_dev"
+if [ -n "$blkid_flags" ]; then
+  # Coldplug above is asynchronous — a device that appeared in sysfs a
+  # moment ago may not have its module fully bound and its blkid-visible
+  # filesystem superblock readable yet, so poll briefly instead of trying
+  # exactly once.
+  for _ in $(seq 1 50); do
+    rootdev=$(blkid $blkid_flags 2>/dev/null) && [ -n "$rootdev" ] && break
+    sleep 0.2
+  done
+fi
+
+if [ -z "$rootdev" ]; then
+  echo "FATAL: could not resolve root device for root=$root_arg" > /dev/console
+  exec /bin/sh
+fi
+
+mount -o ro "$rootdev" /newroot
+exec switch_root /newroot /sbin/init

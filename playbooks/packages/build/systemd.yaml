@@ -105,7 +105,15 @@
     dest: "{{ root_image.mount_point }}/etc/fstab"
     mode: "0644"
 
-- name: Set machine ID and default target, enable gettys and dbus
+- name: Set machine ID and default target, enable gettys, dbus and udev
+  # udev's own units aren't given an explicit enable here to rely on
+  # -Dfirst-boot-full-preset=true alone (see the same reasoning already
+  # applied to dbus/gettys below) — this is what actually detects hardware
+  # and loads the matching kernel module at boot (coldplug via
+  # systemd-udev-trigger + modalias-driven modprobe), for everything past
+  # the root filesystem (NICs, USB, GPU, etc.); the root device itself gets
+  # the identical treatment one step earlier, inside the initramfs built by
+  # playbooks/initramfs.yaml.
   ansible.builtin.shell: |
     set -e
     chroot {{ root_image.mount_point }} /bin/bash <<'CHROOT_EOF'
@@ -120,6 +128,8 @@
       /etc/systemd/system/getty.target.wants/getty@tty1.service
 
     systemctl enable dbus.service 2>/dev/null || true
+    systemctl enable systemd-udevd.service systemd-udev-trigger.service \
+      systemd-udev-settle.service 2>/dev/null || true
     CHROOT_EOF
   args:
     executable: /bin/bash

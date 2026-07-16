@@ -17,5 +17,7 @@
   ansible.builtin.import_playbook: kernel.yaml
 - name: Build the userland inside the chroot
   ansible.builtin.import_playbook: packages/build.yaml
+- name: Build the initramfs and install GRUB
+  ansible.builtin.import_playbook: initramfs.yaml
 - name: Boot and verify the result in QEMU
   ansible.builtin.import_playbook: qemu.yaml

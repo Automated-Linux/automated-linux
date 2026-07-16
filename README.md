@@ -53,7 +53,7 @@ Source package versions/URLs are in [`packages.txt`](packages.txt) and hardcoded
 
 ## Running the full build
 
-One command, from the `playbooks/` directory, runs the entire pipeline end to end — creates the container, cross-compiles the toolchain, builds the kernel, builds the full userland inside a chroot (systemd as PID 1), boots it in QEMU with an automated login+command verification, and deletes the container again:
+One command, from the `playbooks/` directory, runs the entire pipeline end to end — creates the container, cross-compiles the toolchain, builds the kernel, builds the full userland inside a chroot (systemd as PID 1), builds an initramfs and installs GRUB, boots it in QEMU with an automated login+command verification, and deletes the container again:
 
 ```sh
 source venv/bin/activate
@@ -61,12 +61,13 @@ cd playbooks
 ansible-playbook automated-linux.yaml
 ```
 
-Credentials for the built system: **`root` / `root`**. Interactive boot command (printed at the end of the run too):
+Credentials for the built system: **`root` / `root`**. Boot goes through OVMF (UEFI firmware) → GRUB → kernel + initramfs → udev-driven root detection, the same chain real UEFI arm64 hardware uses (not a direct `-kernel` boot). Interactive boot command (printed at the end of the run too, with the exact Homebrew qemu path for `edk2-aarch64-code.fd` filled in):
 
 ```sh
 cd build-images
 qemu-system-aarch64 -M virt -cpu host -accel hvf -m 2048 \
-  -kernel Image -append "console=ttyAMA0 root=/dev/vda rw" \
+  -drive if=pflash,format=raw,readonly=on,file="$(brew --prefix qemu)/share/qemu/edk2-aarch64-code.fd" \
+  -drive if=pflash,format=raw,file=edk2-aarch64-vars.fd \
   -drive file=automated-linux-root.img,if=none,id=hd0,format=raw \
   -device virtio-blk-device,drive=hd0 \
   -netdev user,id=net0,hostfwd=tcp::2222-:22 -device virtio-net-pci,netdev=net0 \
@@ -108,7 +109,8 @@ ansible-playbook docker.yaml prepare.yaml packages/toolchain.yaml kernel.yaml
 | [`packages/toolchain.yaml`](playbooks/packages/toolchain.yaml) | Container | Cross-compiles binutils, GCC (2 passes), glibc, libstdc++, and core userland tools into the mounted root image |
 | [`kernel.yaml`](playbooks/kernel.yaml) | Container | Builds the Linux kernel `Image` and installs modules into the root image |
 | [`packages/build.yaml`](playbooks/packages/build.yaml) | Container | Orchestrator: mounts `/dev` `/proc` `/sys` `/run` into the target root, then imports ~60 modules under [`packages/build/`](playbooks/packages/build/) — one file per package, same pattern as `packages/toolchain/` — in dependency order, ending with **systemd built and wired up as `/sbin/init`** (PID 1, `multi-user.target` default, getty on both the serial console and `tty1`, D-Bus/logind/udev all active, networking via `systemd-networkd`+`systemd-resolved` — see below). Every package is built natively inside the chroot using the gcc/binutils/glibc that `packages/toolchain.yaml` already installed into `{{ root_image.mount_point }}/usr` |
-| [`qemu.yaml`](playbooks/qemu.yaml) | Mac (localhost) | Installs QEMU + e2fsprogs, deletes the build container, repairs the root image with `e2fsck`, boots and verifies the system |
+| [`initramfs.yaml`](playbooks/initramfs.yaml) | Container | Builds `build-images/initramfs.img` from binaries already in the root image (util-linux, kmod, systemd-udevd) so the real root storage controller can be detected and its module loaded before root is mounted, then installs GRUB to the image's EFI System Partition — this is what makes the image boot on real UEFI arm64 hardware, not just via QEMU's `-kernel` shortcut |
+| [`qemu.yaml`](playbooks/qemu.yaml) | Mac (localhost) | Installs QEMU + e2fsprogs, deletes the build container, repairs the root partition with `e2fsck`, boots through OVMF+GRUB+initramfs and verifies the system |
 | [`site.yaml`](playbooks/site.yaml) | Mac (localhost) | Chains `docker.yaml` + `prepare.yaml` + `packages/toolchain.yaml` + `kernel.yaml` (toolchain/kernel only, no userland or boot) |
 | [`automated-linux.yaml`](playbooks/automated-linux.yaml) | Mac (localhost) | **Main entrypoint.** Chains all of the above, in order, for the complete build |
 
@@ -140,6 +142,7 @@ This is QEMU user-mode (SLIRP) networking with a single forwarded port — the V
 - **Re-running `packages/toolchain.yaml` after it already completed once used to fail with `Permission denied`.** Its last task (`Change ownership of toolchain directory`) intentionally `chown -R root:root`s `usr`/`lib`/`lib64`/`var`/`etc`/`bin`/`sbin`/`tools`, correct for a normal top-to-bottom run since nothing after it should write there as the `automated` user. A dedicated task at the start of `packages/toolchain.yaml` now resets ownership back to `automated_user` on every run, so this self-heals automatically. The same thing can still happen if you poke around inside the container manually as root (e.g. `docker exec ... mount -o loop ...` followed by ad hoc commands) — anything you touch outside of Ansible's `become_user: automated` tasks ends up owned by `root`. Fix that case with `docker exec automated-linux-build chown -R automated:automated /mnt/automated-linux/usr /mnt/automated-linux/lib /mnt/automated-linux/lib64 /mnt/automated-linux/var /mnt/automated-linux/etc /mnt/automated-linux/bin /mnt/automated-linux/sbin /mnt/automated-linux/tools` before re-running.
 - **`build-images/` is gitignored — nothing in the repo backs it up.** If it ever goes missing unexpectedly, check `~/.Trash` before assuming it's gone; something in your workflow (Finder, an IDE action, a stray `rm`) may have trashed rather than deleted it. If it's truly gone, `ansible-playbook automated-linux.yaml` rebuilds everything from scratch (60–120 minutes).
 - **10GB root image / 20GB sources image** are the defaults in `vars/automated-linux.yaml`; bump `root_image.size` / `sources_image.size` there before the first `prepare.yaml` run if you plan to add many more packages.
+- **`automated-linux-root.img` is now GPT-partitioned (an EFI System Partition + an ext4 root partition), not a single whole-disk ext4 filesystem.** `prepare.yaml` only partitions/formats a freshly created image — if you already have a `build-images/automated-linux-root.img` from before this change, delete it (and `automated-linux-sources.img` is unaffected) and let the next full run recreate it from scratch; the old whole-disk layout can't be mounted the new way.
 - **The graphical QEMU window uses `-device qemu-xhci -device usb-kbd` for keyboard input, not `virtio-keyboard-pci`.** The latter works but QEMU's Cocoa backend on macOS can't translate every physical key to a virtio keycode, spamming `virtio_input_handle_event: unmapped key: 0 [unmapped]` on the host and dropping those keystrokes; a plain USB keyboard (the kernel already has full USB/XHCI/HID support built in) doesn't have this problem.
 - **systemd installs its libraries into `/usr/lib64`** (meson's platform auto-detection), while every other package in this build uses plain `/usr/lib`. `dbus.yaml` sets `PKG_CONFIG_PATH` to cover both so `pkg-config` finds `libsystemd`; keep this in mind if another package's build ever needs to link against something systemd provides.
 - **Every `make -j` in the pipeline uses `nproc * 2`, not plain `nproc`.** `nproc` reflects `docker.cpuset_cpus`, so this deliberately oversubscribes the container's CPUs — normal practice for compiles, since no single job stays 100% CPU-bound the whole time (I/O, linking, etc.), and it noticeably shortens wall-clock time for CPU-heavy packages (GCC, glibc, the kernel). The tradeoff is peak memory: heavier parallel C++ compilation (GCC itself, systemd) means memory pressure scales with how many jobs are active at once, not just core count. `docker.cpuset_cpus`/`docker.memory` default to `"auto"` (see [Configuration](#configuration)), which reserves 2 CPUs and 2GB versus Docker Desktop's real current allocation specifically to keep this oversubscription safe; the OOM-kill failure mode already documented under [Prerequisites](#prerequisites) gets easier to hit if you override those to something more aggressive.

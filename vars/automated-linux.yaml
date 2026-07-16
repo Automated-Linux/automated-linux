@@ -6,11 +6,6 @@ hostname: "automated-linux"
 docker:
   container_name: "automated-linux-build"
   image: "ubuntu:24.04"
-  # "auto" computes both from Docker Desktop's actual current allocation
-  # (docker.yaml queries it via docker_host_info) minus a safety margin —
-  # self-adjusts if you ever change Docker Desktop's own resource limits,
-  # instead of a number that quietly goes stale. Set an explicit value
-  # (e.g. "0-11" / "18g") to override and skip the auto-detection.
   cpuset_cpus: "auto"
   memory: "auto"
   workspace: "/workspace"
@@ -37,28 +32,34 @@ packages:
   - bzip2
   - flex
   - ccache
+  - parted
+  - dosfstools
 root_image:
   image: "{{ docker.workspace }}/build-images/automated-linux-root.img"
-  # Bumped from 10G: the kernel's switch to allmodconfig (see kernel.yaml)
-  # installs a far larger /lib/modules tree than defconfig's curated
-  # subset. Only affects a *fresh* image — prepare.yaml skips creation if
-  # the .img file already exists, so this does not grow an existing
-  # 10G image; delete build-images/*.img (or manually resize2fs) to
-  # actually pick up the new size on an existing build.
   size: "25G"
   mount_point: "/mnt/automated-linux"
 sources_image:
   image: "{{ docker.workspace }}/build-images/automated-linux-sources.img"
-  # Bumped from 20G for the same reason: allmodconfig's build tree (object
-  # files for thousands of modules) is substantially larger than
-  # defconfig's, even with debug info disabled. Same caveat as root_image
-  # above re: existing images.
   size: "40G"
   mount_point: "/mnt/automated-linux/sources"
 kernel:
   version: "linux-7.1.3"
   url: "https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.1.3.tar.xz"
   image: "{{ docker.workspace }}/build-images/Image"
+# GPT/ESP partitioning + GRUB + initramfs so the built image boots on real
+# UEFI arm64 hardware, not just via QEMU's -kernel shortcut (see
+# playbooks/initramfs.yaml and the "Create GPT partition table" tasks in
+# playbooks/prepare.yaml). QEMU's own boot test (qemu.yaml) exercises this
+# exact same path via OVMF instead of -kernel, so it stays the regression
+# gate for it.
+boot:
+  esp_size: "512MiB"
+  # FAT labels are capped at 11 characters (mkfs.vfat: "Label can be no
+  # longer than 11 characters").
+  esp_label: "AUTO_ESP"
+  esp_mount_point: "{{ root_image.mount_point }}/boot/efi"
+  root_label: "automated-root"
+  initramfs: "{{ docker.workspace }}/build-images/initramfs.img"
 qemu:
   memory: "2048"
   cpus: "4"

@@ -1,0 +1,14 @@
+# Static grub.cfg, not grub-mkconfig-generated: this project builds GRUB
+# from vanilla upstream source (playbooks/packages/build/grub.yaml) with
+# none of the distro os-prober/10_linux scripts that normally generate this
+# file, so it's authored directly instead. root=LABEL={{ boot.root_label }}
+# (not a hardcoded device path) is what makes this boot both under QEMU
+# (/dev/vda2) and on real hardware (e.g. /dev/nvme0n1p2) unchanged — see
+# playbooks/templates/initramfs/init.sh.j2 for the code that resolves it.
+set timeout=3
+set default=0
+
+menuentry "automated-linux" {
+    linux /boot/Image root=LABEL={{ boot.root_label }} rw console=ttyAMA0 console=tty0 quiet loglevel=3
+    initrd /boot/initramfs.img
+}

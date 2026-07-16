@@ -2,9 +2,14 @@
 set timeout 60
 log_user 1
 cd "{{ docker.workspace_host | default(playbook_dir + '/../build-images') }}"
+# OVMF (UEFI firmware) + GRUB + initramfs, not a direct -kernel boot — this
+# is what actually exercises the same boot chain real UEFI arm64 hardware
+# would use (see playbooks/initramfs.yaml and the grub-install task there).
+# console=ttyAMA0/root=LABEL=... come from grub.cfg
+# (playbooks/templates/grub/grub.cfg.j2), not from an -append flag here.
 spawn qemu-system-aarch64 -M virt -cpu host -accel hvf -m {{ qemu.memory }} \
-  -kernel Image \
-  -append "console=ttyAMA0 root=/dev/vda rw quiet loglevel=3" \
+  -drive if=pflash,format=raw,readonly=on,file={{ qemu_prefix.stdout }}/share/qemu/edk2-aarch64-code.fd \
+  -drive if=pflash,format=raw,file=edk2-aarch64-vars.fd \
   -drive file=automated-linux-root.img,if=none,id=hd0,format=raw \
   -device virtio-blk-device,drive=hd0 \
   -nographic

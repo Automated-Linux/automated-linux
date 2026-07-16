@@ -1,0 +1,182 @@
+# code: language=ansible
+---
+# Builds build-images/initramfs.img from binaries already present in the
+# finished root image (util-linux's mount/switch_root/blkid, kmod's
+# modprobe/depmod/insmod, systemd's systemd-udevd/udevadm, bash) — nothing
+# new needs to be built from source. This is what lets a real UEFI arm64
+# machine (unknown storage controller ahead of time) detect its hardware
+# and load the right module before root can even be mounted; QEMU keeps
+# using the identical initramfs too (see qemu.yaml), so the same code path
+# is what gets tested. Must run after kernel.yaml (needs the installed
+# /lib/modules tree) and packages/build.yaml (needs the final binaries).
+- name: Build initramfs
+  hosts: "{{ host | default(docker.container_name) }}"
+  gather_facts: false
+  become: true
+  vars_files:
+    - ../vars/automated-linux.yaml
+  vars:
+    initramfs_staging: "{{ docker.workspace }}/initramfs-build"
+
+  tasks:
+    # Mirrors the mount tasks in packages/build.yaml: needed so `chroot
+    # {{ root_image.mount_point }} ldd ...` below can resolve the dynamic
+    # linker correctly. Idempotent (ansible.posix.mount no-ops if already
+    # mounted from an earlier playbook in the same run), and makes this
+    # playbook safe to run standalone too, not just chained after
+    # packages/build.yaml.
+    - name: Mount proc/sys/dev into root image for chroot ldd calls # noqa: syntax-check[unknown-module]
+      ansible.posix.mount:
+        path: "{{ root_image.mount_point }}/{{ item.path }}"
+        src: "{{ item.src }}"
+        fstype: "{{ item.fstype }}"
+        opts: "{{ item.opts | default(omit) }}"
+        state: "mounted"
+      loop:
+        - { path: "dev", src: "/dev", fstype: "none", opts: "bind" }
+        - { path: "proc", src: "proc", fstype: "proc" }
+        - { path: "sys", src: "sysfs", fstype: "sysfs" }
+
+    - name: Find installed kernel modules directory
+      ansible.builtin.find:
+        paths: "{{ root_image.mount_point }}/lib/modules"
+        file_type: directory
+        depth: 1
+      register: modules_dirs
+
+    - name: Record kernel release
+      ansible.builtin.set_fact:
+        kernel_release: "{{ modules_dirs.files[0].path | basename }}"
+
+    - name: Reset initramfs staging directory
+      ansible.builtin.file:
+        path: "{{ initramfs_staging }}"
+        state: absent
+
+    - name: Create initramfs skeleton (mirrors the root image's usr-merge layout)
+      ansible.builtin.file:
+        path: "{{ initramfs_staging }}/{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - proc
+        - sys
+        - dev
+        - run
+        - newroot
+        - etc
+        - usr/bin
+        - usr/sbin
+        - usr/lib
+
+    - name: Symlink bin/sbin/lib into usr/ (same convention as root_image's directory_links)
+      ansible.builtin.file:
+        src: "usr/{{ item }}"
+        dest: "{{ initramfs_staging }}/{{ item }}"
+        state: link
+      loop:
+        - bin
+        - sbin
+        - lib
+
+    - name: Copy required binaries and their shared-library closure
+      # Erring generous rather than minimal: a missing .so is a silent boot
+      # failure with no root filesystem to log to, so this copies whatever
+      # ldd (run inside the root image via chroot, so it resolves paths the
+      # same way the real system would) reports for each binary, mirroring
+      # each file's exact absolute path so relative symlinks (e.g. kmod.yaml's
+      # /usr/sbin/modprobe -> ../bin/kmod) keep resolving correctly.
+      ansible.builtin.shell: |
+        set -e -o pipefail
+        ROOT="{{ root_image.mount_point }}"
+        STAGE="{{ initramfs_staging }}"
+
+        copy_closure() {
+          local bin="$1"
+          [ -e "$ROOT$bin" ] || return 0
+          [ -e "$STAGE$bin" ] && return 0
+          mkdir -p "$STAGE$(dirname "$bin")"
+          cp -a "$ROOT$bin" "$STAGE$bin"
+          { chroot "$ROOT" /usr/bin/ldd "$bin" 2>/dev/null || true; } | { grep -oE '/[^ ]+' || true; } | while read -r lib; do
+            [ -e "$STAGE$lib" ] && continue
+            mkdir -p "$STAGE$(dirname "$lib")"
+            cp -a "$ROOT$lib" "$STAGE$lib" 2>/dev/null || true
+          done
+        }
+
+        for b in /usr/bin/bash /usr/bin/mount /usr/sbin/switch_root \
+                 /usr/bin/blkid /usr/sbin/modprobe /usr/sbin/depmod \
+                 /usr/sbin/insmod /usr/lib/systemd/systemd-udevd /usr/bin/udevadm; do
+          copy_closure "$b"
+        done
+      args:
+        executable: /bin/bash
+      register: result
+      changed_when: true
+
+    - name: Copy udev rules/helpers tree (needed for coldplug modalias matching)
+      ansible.builtin.command:
+        cmd: "cp -a {{ root_image.mount_point }}/usr/lib/udev {{ initramfs_staging }}/usr/lib/udev"
+      changed_when: true
+
+    - name: Copy kernel modules tree
+      ansible.builtin.command:
+        cmd: >-
+          cp -a {{ root_image.mount_point }}/lib/modules/{{ kernel_release }}
+          {{ initramfs_staging }}/usr/lib/modules/{{ kernel_release }}
+      changed_when: true
+
+    - name: Install /init script
+      ansible.builtin.template:
+        src: templates/initramfs/init.sh.j2
+        dest: "{{ initramfs_staging }}/init"
+        mode: "0755"
+
+    - name: Package initramfs as gzip-compressed cpio archive
+      ansible.builtin.shell: |
+        set -e -o pipefail
+        cd {{ initramfs_staging }}
+        find . | cpio -o -H newc | gzip -9 > {{ boot.initramfs }}
+      args:
+        executable: /bin/bash
+      register: result
+      changed_when: true
+
+    - name: Ensure /boot directory exists in root image
+      ansible.builtin.file:
+        path: "{{ root_image.mount_point }}/boot"
+        state: directory
+        mode: "0755"
+
+    - name: Copy kernel Image into root image /boot
+      ansible.builtin.copy:
+        src: "{{ kernel.image }}"
+        dest: "{{ root_image.mount_point }}/boot/Image"
+        remote_src: true
+        mode: "0644"
+
+    - name: Copy initramfs into root image /boot
+      ansible.builtin.copy:
+        src: "{{ boot.initramfs }}"
+        dest: "{{ root_image.mount_point }}/boot/initramfs.img"
+        remote_src: true
+        mode: "0644"
+
+    - name: Install GRUB to the EFI System Partition
+      # --removable writes the fallback EFI/BOOT/BOOTAA64.EFI path instead of
+      # registering an NVRAM boot entry — required for OVMF (no persistent
+      # NVRAM across QEMU invocations) and works identically as a zero-config
+      # "just works" default on real hardware, with no efibootmgr step needed.
+      ansible.builtin.command:
+        cmd: >-
+          chroot {{ root_image.mount_point }} grub-install
+          --target=arm64-efi --efi-directory=/boot/efi
+          --boot-directory=/boot --bootloader-id=automated-linux --removable
+      register: result
+      changed_when: true
+
+    - name: Install static grub.cfg
+      ansible.builtin.template:
+        src: templates/grub/grub.cfg.j2
+        dest: "{{ root_image.mount_point }}/boot/grub/grub.cfg"
+        mode: "0644"

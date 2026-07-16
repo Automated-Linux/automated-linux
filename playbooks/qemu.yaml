@@ -22,6 +22,30 @@
       register: e2fsprogs_prefix
       changed_when: false
 
+    - name: Locate Homebrew qemu prefix
+      # root_image is now GPT-partitioned (ESP + root) instead of a single
+      # whole-disk ext4 filesystem — booting it on real UEFI arm64 hardware
+      # needs actual UEFI firmware, so the automated boot test now goes
+      # through OVMF (QEMU's UEFI firmware, bundled with Homebrew's qemu)
+      # instead of the old `-kernel Image` shortcut, exercising the exact
+      # same GRUB+initramfs path real hardware would use.
+      ansible.builtin.command: brew --prefix qemu
+      register: qemu_prefix
+      changed_when: false
+
+    - name: Copy a fresh writable OVMF variable store
+      # OVMF's pflash vars file is the UEFI NVRAM; Homebrew's copy is a
+      # read-only template. --removable (see the grub-install task in
+      # playbooks/initramfs.yaml) means boot doesn't depend on any NVRAM
+      # Boot#### entry, so a fresh copy every run is fine and avoids stale
+      # boot-variable state from a previous run.
+      ansible.builtin.copy:
+        src: "{{ qemu_prefix.stdout }}/share/qemu/edk2-aarch64-vars.fd"
+        dest: "{{ playbook_dir }}/../build-images/edk2-aarch64-vars.fd"
+        remote_src: true
+        force: true
+        mode: "0644"
+
     - name: Remove the build container
       # A loop-mounted image or a stray interactive shell inside the
       # container can hold the root image open, and QEMU needs exclusive
@@ -34,11 +58,44 @@
         name: "{{ docker.container_name }}"
         state: absent
 
-    - name: Repair the root image filesystem
-      ansible.builtin.command: "{{ e2fsprogs_prefix.stdout }}/sbin/e2fsck -fy {{ playbook_dir }}/../build-images/automated-linux-root.img"
+    - name: Attach root image as a raw disk for repair
+      # This play runs on localhost (the Mac), not inside the Linux build
+      # container — `losetup` doesn't exist here. hdiutil is the macOS
+      # equivalent: -imagekey diskimage-class=CRawDiskImage attaches the
+      # file as a raw disk without trying to interpret/mount its contents,
+      # and macOS parses the GPT table generically (it doesn't need to
+      # understand ext4/vfat to expose each partition as its own /dev
+      # slice), giving us /dev/diskNs2 for the root partition.
+      ansible.builtin.shell: |
+        set -e -o pipefail
+        hdiutil attach -nomount -imagekey diskimage-class=CRawDiskImage \
+          {{ playbook_dir }}/../build-images/automated-linux-root.img | awk 'NR==1{print $1}'
+      args:
+        executable: /bin/bash
+      register: repair_disk_attach
+      changed_when: true
+
+    - name: Repair the root partition filesystem
+      # Root is now partition 2 of a GPT disk, not the whole image file
+      # directly — e2fsck can no longer target automated-linux-root.img
+      # itself once it holds a partition table. /dev/rdiskN (raw/character
+      # device) rather than /dev/diskN is the usual recommendation for
+      # tools like fsck that do their own block I/O, to avoid macOS's
+      # buffer cache.
+      ansible.builtin.command: >-
+        {{ e2fsprogs_prefix.stdout }}/sbin/e2fsck -fy
+        {{ repair_disk_attach.stdout | replace('/dev/disk', '/dev/rdisk') }}s2
       register: e2fsck_result
       changed_when: "'FILE SYSTEM WAS MODIFIED' in e2fsck_result.stdout"
       failed_when: e2fsck_result.rc > 1
+
+    - name: Detach the repair disk
+      # Must happen before QEMU starts: QEMU needs exclusive access to the
+      # image (same reasoning as removing the build container, above) — a
+      # disk left attached counts as exactly the kind of concurrent access
+      # that corrupts the filesystem.
+      ansible.builtin.command: "hdiutil detach {{ repair_disk_attach.stdout }}"
+      changed_when: true
 
     - name: Render automated boot-test script
       ansible.builtin.template:
@@ -62,10 +119,15 @@
     - name: Print interactive boot commands
       ansible.builtin.debug:
         msg:
+          - >-
+            Boot now goes through OVMF (UEFI firmware) + GRUB + initramfs,
+            same as real hardware would — not a direct -kernel boot.
           - "Serial console (terminal, login: root / password: root, Ctrl-A X to quit):"
           - >-
             cd build-images && qemu-system-aarch64 -M virt -cpu host -accel hvf
-            -m {{ qemu.memory }} -kernel Image -append "console=ttyAMA0 root=/dev/vda rw"
+            -m {{ qemu.memory }}
+            -drive if=pflash,format=raw,readonly=on,file={{ qemu_prefix.stdout }}/share/qemu/edk2-aarch64-code.fd
+            -drive if=pflash,format=raw,file=edk2-aarch64-vars.fd
             -drive file=automated-linux-root.img,if=none,id=hd0,format=raw
             -device virtio-blk-device,drive=hd0
             -netdev user,id=net0,hostfwd=tcp::{{ qemu.ssh_host_port }}-:22
@@ -73,7 +135,9 @@
           - "Graphical window (virtio-gpu framebuffer console on tty1, large font):"
           - >-
             cd build-images && qemu-system-aarch64 -M virt -cpu host -accel hvf
-            -m {{ qemu.memory }} -kernel Image -append "console=ttyAMA0 root=/dev/vda rw fbcon=font:TER16x32"
+            -m {{ qemu.memory }}
+            -drive if=pflash,format=raw,readonly=on,file={{ qemu_prefix.stdout }}/share/qemu/edk2-aarch64-code.fd
+            -drive if=pflash,format=raw,file=edk2-aarch64-vars.fd
             -drive file=automated-linux-root.img,if=none,id=hd0,format=raw
             -device virtio-blk-device,drive=hd0 -device virtio-gpu-pci
             -device qemu-xhci -device usb-kbd
