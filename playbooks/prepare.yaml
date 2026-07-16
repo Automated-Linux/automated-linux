@@ -50,23 +50,149 @@
       changed_when: true
       loop: "{{ existing_images.results }}"
 
-    - name: Create filesystems
+    - name: Create GPT partition table and partitions on root image
+      # ESP (partition 1, FAT32) + root (partition 2, ext4) instead of a
+      # single whole-disk ext4 filesystem — required for grub-install
+      # --efi-directory=/boot/efi (playbooks/initramfs.yaml) and the
+      # LABEL={{ boot.esp_label }} entry in fstab.j2. Reusing esp_size as
+      # both "size" and "end boundary" is intentionally approximate (off
+      # by the 1MiB start offset) — exact ESP size doesn't matter here.
       ansible.builtin.command:
-        cmd: "/usr/sbin/mkfs.ext4 {{ item.item.image }}"
-      when: not item.stat.exists
+        cmd: "parted -s {{ root_image.image }} {{ item }}"
+      loop:
+        - "mklabel gpt"
+        - "mkpart ESP fat32 1MiB {{ boot.esp_size }}"
+        - "set 1 esp on"
+        - "mkpart root ext4 {{ boot.esp_size }} 100%"
+      when: not existing_images.results[0].stat.exists
       changed_when: true
-      loop: "{{ existing_images.results }}"
 
-    - name: Mount images # noqa: syntax-check[unknown-module]
+    - name: Check filesystem type on sources image
+      # See "Check filesystem types on root image partitions" above — same
+      # reasoning: gating mkfs on file-just-created is fragile against
+      # partial failures, so check the actual filesystem instead.
+      ansible.builtin.command: "blkid -o value -s TYPE {{ sources_image.image }}"
+      register: sources_image_fs_type
+      failed_when: false
+      changed_when: false
+
+    - name: Create ext4 filesystem on sources image
+      # sources_image stays a plain whole-disk ext4 image — only root_image
+      # needs GPT/ESP partitioning.
+      ansible.builtin.command:
+        cmd: "/usr/sbin/mkfs.ext4 {{ sources_image.image }}"
+      when: sources_image_fs_type.stdout != "ext4"
+      changed_when: true
+
+    - name: Detach stale loop device for freshly (re)created root image
+      # losetup -j matches by backing-file path, not inode, so if the .img
+      # was deleted and recreated (e.g. to repartition), a loop device from
+      # a previous run can still be attached to the old, now-deleted inode
+      # under the same path and get reused below — mounting its p2 then
+      # fails with "wrong fs type, bad superblock" since that stale device
+      # was never reformatted. Only safe/needed when we know the image is
+      # brand new, i.e. it didn't exist before the "Create images" task.
+      ansible.builtin.shell: |
+        set -o pipefail
+        losetup -j {{ root_image.image }} | cut -d: -f1 | xargs -r losetup -d
+      args:
+        executable: /bin/bash
+      become: true
+      when: not existing_images.results[0].stat.exists
+      changed_when: true
+
+    - name: Find existing loop device for root image
+      # Loop devices are container-local kernel state, reset every time
+      # docker.yaml recreates the container — unlike the .img files
+      # themselves, which persist on the host-bind-mounted build-images/.
+      # So this (and the attach/mount below) must run on every invocation,
+      # not just when the image was freshly created.
+      ansible.builtin.shell: |
+        set -o pipefail
+        losetup -j {{ root_image.image }} | cut -d: -f1
+      args:
+        executable: /bin/bash
+      register: existing_loop
+      changed_when: false
+
+    - name: Attach root image to a partition-scanning loop device
+      # -P is what creates the p1/p2 device nodes for the two partitions
+      # (plain losetup only exposes the whole-disk image).
+      ansible.builtin.command: "losetup -P -f --show {{ root_image.image }}"
+      register: new_loop
+      when: existing_loop.stdout == ""
+      changed_when: true
+
+    - name: Record root image loop device
+      ansible.builtin.set_fact:
+        root_loop_device: "{{ existing_loop.stdout if existing_loop.stdout != '' else new_loop.stdout }}"
+
+    - name: Ensure partition device nodes exist for root loop device
+      # There's no udev daemon in this container, so while losetup -P makes
+      # the kernel aware of the p1/p2 partitions (visible under
+      # /sys/block/loopN/loopNpX), nothing creates the corresponding
+      # /dev/loopNpX special files — mkfs/mount then fail with "No such
+      # file or directory" / bad superblock. Create them by hand from the
+      # major:minor sysfs reports, if they aren't already there.
+      ansible.builtin.shell: |
+        set -o pipefail
+        loop_name=$(basename {{ root_loop_device }})
+        for part in p1 p2; do
+          dev="{{ root_loop_device }}${part}"
+          if [ ! -e "$dev" ]; then
+            devmm=$(cat /sys/block/${loop_name}/${loop_name}${part}/dev)
+            mknod "$dev" b "${devmm%%:*}" "${devmm##*:}"
+          fi
+        done
+      args:
+        executable: /bin/bash
+      become: true
+      changed_when: true
+
+    - name: Check filesystem types on root image partitions
+      # Gating mkfs below on "was the .img file just created" breaks if a
+      # previous run died between fallocate and mkfs (e.g. the missing
+      # partition device nodes this container hits) — the file then exists
+      # but the partitions were never formatted, and every later run would
+      # skip mkfs and fail to mount. Check the actual filesystem instead.
+      # blkid exits 2 with empty output when a partition has no filesystem,
+      # which is an expected, non-fatal outcome here.
+      ansible.builtin.command: "blkid -o value -s TYPE {{ root_loop_device }}{{ item }}"
+      register: root_partition_fs_types
+      loop:
+        - "p1"
+        - "p2"
+      failed_when: false
+      changed_when: false
+
+    - name: Format the EFI System Partition
+      ansible.builtin.command: "mkfs.vfat -F 32 -n {{ boot.esp_label }} {{ root_loop_device }}p1"
+      when: root_partition_fs_types.results[0].stdout != "vfat"
+      changed_when: true
+
+    - name: Format the root partition
+      ansible.builtin.command: "mkfs.ext4 -L {{ boot.root_label }} {{ root_loop_device }}p2"
+      when: root_partition_fs_types.results[1].stdout != "ext4"
+      changed_when: true
+
+    - name: Mount root partition # noqa: syntax-check[unknown-module]
       become: true
       ansible.posix.mount:
-        path: "{{ item.mount_point }}"
-        src: "{{ item.image }}"
+        path: "{{ root_image.mount_point }}"
+        src: "{{ root_loop_device }}p2"
         fstype: "ext4"
         state: "ephemeral"
-      with_items:
-        - "{{ root_image }}"
-        - "{{ sources_image }}"
+
+    - name: Mount sources image # noqa: syntax-check[unknown-module]
+      # Unlike root_image, sources_image is a plain whole-disk ext4 file —
+      # Linux mount(8) auto-loop-mounts a regular file when no partition
+      # scanning is needed, so no explicit losetup is required here.
+      become: true
+      ansible.posix.mount:
+        path: "{{ sources_image.mount_point }}"
+        src: "{{ sources_image.image }}"
+        fstype: "ext4"
+        state: "ephemeral"
 
     - name: Set ownership to mounted directories
       become: true
