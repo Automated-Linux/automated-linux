@@ -35,10 +35,17 @@ packages:
   - parted
   - dosfstools
   - cpio
+  - qemu-utils
 root_image:
-  image: "{{ docker.workspace }}/build-images/automated-linux-root.img"
+  # vmdk instead of a plain raw file: Parallels Desktop (and other non-QEMU
+  # tooling) can attach/import this format directly, where it flatly
+  # rejects a raw partitioned image handed to it via prlctl. Nothing here
+  # can loop-mount a vmdk directly (losetup only understands raw), so it's
+  # attached via qemu-nbd instead — see nbd_device below.
+  image: "{{ docker.workspace }}/build-images/automated-linux-root.vmdk"
   size: "25G"
   mount_point: "/mnt/automated-linux"
+  nbd_device: "/dev/nbd0"
 sources_image:
   image: "{{ docker.workspace }}/build-images/automated-linux-sources.img"
   size: "40G"

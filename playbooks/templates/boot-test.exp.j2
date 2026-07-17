@@ -10,7 +10,7 @@ cd "{{ docker.workspace_host | default(playbook_dir + '/../build-images') }}"
 spawn qemu-system-aarch64 -M virt -cpu host -accel hvf -m {{ qemu.memory }} \
   -drive if=pflash,format=raw,readonly=on,file={{ qemu_prefix.stdout }}/share/qemu/edk2-aarch64-code.fd \
   -drive if=pflash,format=raw,file=edk2-aarch64-vars.fd \
-  -drive file=automated-linux-root.img,if=none,id=hd0,format=raw \
+  -drive file=automated-linux-root.vmdk,if=none,id=hd0,format=vmdk \
   -device virtio-blk-device,drive=hd0 \
   -nographic
 

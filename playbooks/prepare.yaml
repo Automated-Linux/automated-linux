@@ -43,12 +43,54 @@
         - "{{ root_image }}"
         - "{{ sources_image }}"
 
-    - name: Create images
+    - name: Create sources image
       ansible.builtin.command:
-        cmd: "fallocate -l {{ item.item.size }} {{ item.item.image }}"
-      when: not item.stat.exists
+        cmd: "fallocate -l {{ sources_image.size }} {{ sources_image.image }}"
+      when: not existing_images.results[1].stat.exists
       changed_when: true
-      loop: "{{ existing_images.results }}"
+
+    - name: Create root vmdk image
+      # qemu-img, not fallocate: a vmdk needs a real header (fallocate would
+      # just produce {{ root_image.size }} of zero bytes with no format
+      # qemu-nbd could recognize). Empty/unpartitioned at this point —
+      # partitioning happens below, through the qemu-nbd-attached device,
+      # since parted/mkfs need to see raw sectors and can't parse the vmdk
+      # container format themselves.
+      ansible.builtin.command:
+        cmd: "qemu-img create -f vmdk {{ root_image.image }} {{ root_image.size }}"
+      when: not existing_images.results[0].stat.exists
+      changed_when: true
+
+    - name: Disconnect stale nbd device for freshly (re)created root image
+      # Same reasoning as the old stale-loop-device task this replaces: a
+      # qemu-nbd connection from a previous run can still be attached to an
+      # old, now-deleted/replaced image under the same device path. Only
+      # safe/needed when we know the image is brand new.
+      ansible.builtin.command:
+        cmd: "qemu-nbd --disconnect {{ root_image.nbd_device }}"
+      become: true
+      when: not existing_images.results[0].stat.exists
+      failed_when: false
+      changed_when: true
+
+    - name: Connect root vmdk via qemu-nbd
+      # nbd connections are host-kernel-level state, reset whenever
+      # docker.yaml recreates the container (the qemu-nbd server process
+      # backing the connection dies with it) — so, like the loop device
+      # this replaces, this must run on every invocation, not just when the
+      # image was freshly created. Idempotent: skips if nbd_device already
+      # reports a nonzero size (already connected).
+      ansible.builtin.shell: |
+        set -e -o pipefail
+        dev_name=$(basename {{ root_image.nbd_device }})
+        size=$(cat /sys/class/block/${dev_name}/size 2>/dev/null || echo 0)
+        if [ "$size" = "0" ]; then
+          qemu-nbd --connect={{ root_image.nbd_device }} {{ root_image.image }}
+        fi
+      args:
+        executable: /bin/bash
+      become: true
+      changed_when: true
 
     - name: Create GPT partition table and partitions on root image
       # ESP (partition 1, FAT32) + root (partition 2, ext4) instead of a
@@ -57,14 +99,54 @@
       # LABEL={{ boot.esp_label }} entry in fstab.j2. Reusing esp_size as
       # both "size" and "end boundary" is intentionally approximate (off
       # by the 1MiB start offset) — exact ESP size doesn't matter here.
+      # Targets the qemu-nbd-attached block device, not the vmdk file
+      # directly — parted needs raw sector access, which only the attached
+      # device (not the vmdk container) provides.
       ansible.builtin.command:
-        cmd: "parted -s {{ root_image.image }} {{ item }}"
+        cmd: "parted -s {{ root_image.nbd_device }} {{ item }}"
       loop:
         - "mklabel gpt"
         - "mkpart ESP fat32 1MiB {{ boot.esp_size }}"
         - "set 1 esp on"
         - "mkpart root ext4 {{ boot.esp_size }} 100%"
       when: not existing_images.results[0].stat.exists
+      changed_when: true
+
+    - name: Re-read partition table on nbd device
+      # Skipped once the root partition is actually mounted (later runs in
+      # the same container session): BLKRRPART refuses with "Device or
+      # resource busy" against a device with a mounted partition, and
+      # nothing needs re-reading anyway if the partition table hasn't
+      # changed since the last time this ran.
+      ansible.builtin.shell: |
+        set -e -o pipefail
+        mountpoint -q {{ root_image.mount_point }} || blockdev --rereadpt {{ root_image.nbd_device }}
+      args:
+        executable: /bin/bash
+      become: true
+      changed_when: true
+
+    - name: Ensure partition device nodes exist for root nbd device
+      # Same problem as the loop device this replaces: no udev daemon in
+      # this container, so nothing creates /dev/nbd0p1 / /dev/nbd0p2
+      # automatically even once the kernel (via /sys/class/block/nbd0/nbd0pN)
+      # knows about them. Always recreated (not just "if missing"): a
+      # disconnect/reconnect cycle within the same container session (e.g.
+      # qemu.yaml's repair play) can hand out a different major:minor for
+      # the same partition, leaving a stale node behind that points at
+      # nothing — "No such device or address" from whatever tries to use it.
+      ansible.builtin.shell: |
+        set -o pipefail
+        dev_name=$(basename {{ root_image.nbd_device }})
+        for part in p1 p2; do
+          dev="{{ root_image.nbd_device }}${part}"
+          devmm=$(cat /sys/class/block/${dev_name}/${dev_name}${part}/dev)
+          rm -f "$dev"
+          mknod "$dev" b "${devmm%%:*}" "${devmm##*:}"
+        done
+      args:
+        executable: /bin/bash
+      become: true
       changed_when: true
 
     - name: Check filesystem type on sources image
@@ -84,71 +166,6 @@
       when: sources_image_fs_type.stdout != "ext4"
       changed_when: true
 
-    - name: Detach stale loop device for freshly (re)created root image
-      # losetup -j matches by backing-file path, not inode, so if the .img
-      # was deleted and recreated (e.g. to repartition), a loop device from
-      # a previous run can still be attached to the old, now-deleted inode
-      # under the same path and get reused below — mounting its p2 then
-      # fails with "wrong fs type, bad superblock" since that stale device
-      # was never reformatted. Only safe/needed when we know the image is
-      # brand new, i.e. it didn't exist before the "Create images" task.
-      ansible.builtin.shell: |
-        set -o pipefail
-        losetup -j {{ root_image.image }} | cut -d: -f1 | xargs -r losetup -d
-      args:
-        executable: /bin/bash
-      become: true
-      when: not existing_images.results[0].stat.exists
-      changed_when: true
-
-    - name: Find existing loop device for root image
-      # Loop devices are container-local kernel state, reset every time
-      # docker.yaml recreates the container — unlike the .img files
-      # themselves, which persist on the host-bind-mounted build-images/.
-      # So this (and the attach/mount below) must run on every invocation,
-      # not just when the image was freshly created.
-      ansible.builtin.shell: |
-        set -o pipefail
-        losetup -j {{ root_image.image }} | cut -d: -f1
-      args:
-        executable: /bin/bash
-      register: existing_loop
-      changed_when: false
-
-    - name: Attach root image to a partition-scanning loop device
-      # -P is what creates the p1/p2 device nodes for the two partitions
-      # (plain losetup only exposes the whole-disk image).
-      ansible.builtin.command: "losetup -P -f --show {{ root_image.image }}"
-      register: new_loop
-      when: existing_loop.stdout == ""
-      changed_when: true
-
-    - name: Record root image loop device
-      ansible.builtin.set_fact:
-        root_loop_device: "{{ existing_loop.stdout if existing_loop.stdout != '' else new_loop.stdout }}"
-
-    - name: Ensure partition device nodes exist for root loop device
-      # There's no udev daemon in this container, so while losetup -P makes
-      # the kernel aware of the p1/p2 partitions (visible under
-      # /sys/block/loopN/loopNpX), nothing creates the corresponding
-      # /dev/loopNpX special files — mkfs/mount then fail with "No such
-      # file or directory" / bad superblock. Create them by hand from the
-      # major:minor sysfs reports, if they aren't already there.
-      ansible.builtin.shell: |
-        set -o pipefail
-        loop_name=$(basename {{ root_loop_device }})
-        for part in p1 p2; do
-          dev="{{ root_loop_device }}${part}"
-          if [ ! -e "$dev" ]; then
-            devmm=$(cat /sys/block/${loop_name}/${loop_name}${part}/dev)
-            mknod "$dev" b "${devmm%%:*}" "${devmm##*:}"
-          fi
-        done
-      args:
-        executable: /bin/bash
-      become: true
-      changed_when: true
-
     - name: Check filesystem types on root image partitions
       # Gating mkfs below on "was the .img file just created" breaks if a
       # previous run died between fallocate and mkfs (e.g. the missing
@@ -157,7 +174,7 @@
       # skip mkfs and fail to mount. Check the actual filesystem instead.
       # blkid exits 2 with empty output when a partition has no filesystem,
       # which is an expected, non-fatal outcome here.
-      ansible.builtin.command: "blkid -o value -s TYPE {{ root_loop_device }}{{ item }}"
+      ansible.builtin.command: "blkid -o value -s TYPE {{ root_image.nbd_device }}{{ item }}"
       register: root_partition_fs_types
       loop:
         - "p1"
@@ -166,12 +183,12 @@
       changed_when: false
 
     - name: Format the EFI System Partition
-      ansible.builtin.command: "mkfs.vfat -F 32 -n {{ boot.esp_label }} {{ root_loop_device }}p1"
+      ansible.builtin.command: "mkfs.vfat -F 32 -n {{ boot.esp_label }} {{ root_image.nbd_device }}p1"
       when: root_partition_fs_types.results[0].stdout != "vfat"
       changed_when: true
 
     - name: Format the root partition
-      ansible.builtin.command: "mkfs.ext4 -L {{ boot.root_label }} {{ root_loop_device }}p2"
+      ansible.builtin.command: "mkfs.ext4 -L {{ boot.root_label }} {{ root_image.nbd_device }}p2"
       when: root_partition_fs_types.results[1].stdout != "ext4"
       changed_when: true
 
@@ -179,7 +196,7 @@
       become: true
       ansible.posix.mount:
         path: "{{ root_image.mount_point }}"
-        src: "{{ root_loop_device }}p2"
+        src: "{{ root_image.nbd_device }}p2"
         fstype: "ext4"
         state: "ephemeral"
 

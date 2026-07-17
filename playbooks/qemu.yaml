@@ -1,5 +1,93 @@
 # code: language=ansible
 ---
+# Repair happens through the docker container (qemu-nbd), not the Mac host:
+# hdiutil (used here up until the switch to vmdk) only understands Apple
+# disk-image formats and cannot interpret a VMware vmdk container at all.
+# This means the container must still be up for this part — the opposite
+# of the "remove it before booting QEMU" rule the next play follows, so
+# this has to be its own earlier play, entirely done and the container
+# gone again before QEMU ever touches the file.
+- name: Repair the root filesystem via the build container
+  hosts: "{{ host | default(docker.container_name) }}"
+  gather_facts: false
+  become: true
+  vars_files:
+    - ../vars/automated-linux.yaml
+
+  tasks:
+    - name: Install repair dependencies
+      # Standalone-safe: this play may run without prepare.yaml having
+      # installed these into the container first (e.g. `ansible-playbook
+      # docker.yaml qemu.yaml`).
+      ansible.builtin.package:
+        name:
+          - qemu-utils
+          - e2fsprogs
+          - dosfstools
+        state: present
+
+    - name: Unmount root image and everything mounted under it
+      # In a full pipeline run this is still mounted from prepare.yaml /
+      # packages/build.yaml / initramfs.yaml earlier in the same container
+      # session (dev/proc/sys bind mounts, the sources_image submount,
+      # boot/efi) — e2fsck refuses to safely repair a mounted filesystem,
+      # so all of it has to come down first. -R unmounts the target and
+      # everything mounted under it, innermost first. Failure is fine (e.g.
+      # already unmounted, or nothing was ever mounted this session).
+      ansible.builtin.command: "umount -R {{ root_image.mount_point }}"
+      failed_when: false
+      changed_when: true
+
+    - name: Ensure root vmdk is connected via qemu-nbd
+      ansible.builtin.shell: |
+        set -e -o pipefail
+        dev_name=$(basename {{ root_image.nbd_device }})
+        size=$(cat /sys/class/block/${dev_name}/size 2>/dev/null || echo 0)
+        if [ "$size" = "0" ]; then
+          qemu-nbd --connect={{ root_image.nbd_device }} {{ root_image.image }}
+        fi
+        blockdev --rereadpt {{ root_image.nbd_device }}
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Ensure partition device nodes exist for root nbd device
+      # Always recreated (not just "if missing"): the disconnect/reconnect
+      # cycle right above can hand out a different major:minor for the same
+      # partition, leaving a stale node behind that points at nothing.
+      ansible.builtin.shell: |
+        set -o pipefail
+        dev_name=$(basename {{ root_image.nbd_device }})
+        for part in p1 p2; do
+          dev="{{ root_image.nbd_device }}${part}"
+          devmm=$(cat /sys/class/block/${dev_name}/${dev_name}${part}/dev)
+          rm -f "$dev"
+          mknod "$dev" b "${devmm%%:*}" "${devmm##*:}"
+        done
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Repair the EFI System Partition filesystem
+      ansible.builtin.command: "fsck.vfat -a {{ root_image.nbd_device }}p1"
+      register: vfat_repair_result
+      changed_when: "'Filesystem was changed' in vfat_repair_result.stdout"
+      failed_when: vfat_repair_result.rc > 1
+
+    - name: Repair the root partition filesystem
+      ansible.builtin.command: "e2fsck -fy {{ root_image.nbd_device }}p2"
+      register: e2fsck_result
+      changed_when: "'FILE SYSTEM WAS MODIFIED' in e2fsck_result.stdout"
+      failed_when: e2fsck_result.rc > 1
+
+    - name: Disconnect root vmdk from qemu-nbd
+      # QEMU needs exclusive access to the file next (see the play below) —
+      # same reasoning as removing the build container: any writer left
+      # holding it open risks corrupting the filesystem under concurrent
+      # access.
+      ansible.builtin.command: "qemu-nbd --disconnect {{ root_image.nbd_device }}"
+      changed_when: true
+
 - name: Boot the built system in QEMU
   hosts: localhost
   connection: local
@@ -10,17 +98,15 @@
     qemu_run_test: true
 
   tasks:
-    - name: Ensure QEMU and e2fsprogs are installed
+    - name: Ensure QEMU is installed
+      # e2fsprogs is no longer needed here — repair now happens against the
+      # vmdk through the build container (qemu-nbd understands raw sectors;
+      # hdiutil does not understand the vmdk container format at all), see
+      # the "Repair the root filesystem via the build container" play above.
       community.general.homebrew:
         name:
           - qemu
-          - e2fsprogs
         state: present
-
-    - name: Locate Homebrew e2fsprogs prefix
-      ansible.builtin.command: brew --prefix e2fsprogs
-      register: e2fsprogs_prefix
-      changed_when: false
 
     - name: Locate Homebrew qemu prefix
       # root_image is now GPT-partitioned (ESP + root) instead of a single
@@ -87,47 +173,6 @@
         name: "{{ docker.container_name }}"
         state: absent
 
-    - name: Attach root image as a raw disk for repair
-      # This play runs on localhost (the Mac), not inside the Linux build
-      # container — `losetup` doesn't exist here. hdiutil is the macOS
-      # equivalent: -imagekey diskimage-class=CRawDiskImage attaches the
-      # file as a raw disk without trying to interpret/mount its contents,
-      # and macOS parses the GPT table generically (it doesn't need to
-      # understand ext4/vfat to expose each partition as its own /dev
-      # slice), giving us /dev/diskNs2 for the root partition.
-      ansible.builtin.shell: |
-        set -e -o pipefail
-        hdiutil attach -nomount -imagekey diskimage-class=CRawDiskImage \
-          {{ playbook_dir }}/../build-images/automated-linux-root.img | awk 'NR==1{print $1}'
-      args:
-        executable: /bin/bash
-      register: repair_disk_attach
-      changed_when: true
-
-    - name: Repair the root partition filesystem
-      # Root is now partition 2 of a GPT disk, not the whole image file
-      # directly — e2fsck can no longer target automated-linux-root.img
-      # itself once it holds a partition table. Deliberately using
-      # /dev/diskN (buffered) rather than /dev/rdiskN (raw/character) here:
-      # e2fsck's final write of filesystem info hits hdiutil's raw-disk
-      # path with "Invalid argument" (alignment restrictions on
-      # CRawDiskImage), rc 9 — going through the buffer cache avoids that
-      # at the cost of speed, which doesn't matter for a one-shot repair.
-      ansible.builtin.command: >-
-        {{ e2fsprogs_prefix.stdout }}/sbin/e2fsck -fy
-        {{ repair_disk_attach.stdout }}s2
-      register: e2fsck_result
-      changed_when: "'FILE SYSTEM WAS MODIFIED' in e2fsck_result.stdout"
-      failed_when: e2fsck_result.rc > 1
-
-    - name: Detach the repair disk
-      # Must happen before QEMU starts: QEMU needs exclusive access to the
-      # image (same reasoning as removing the build container, above) — a
-      # disk left attached counts as exactly the kind of concurrent access
-      # that corrupts the filesystem.
-      ansible.builtin.command: "hdiutil detach {{ repair_disk_attach.stdout }}"
-      changed_when: true
-
     - name: Render automated boot-test script
       ansible.builtin.template:
         src: templates/boot-test.exp.j2
@@ -159,7 +204,7 @@
             -m {{ qemu.memory }}
             -drive if=pflash,format=raw,readonly=on,file={{ qemu_prefix.stdout }}/share/qemu/edk2-aarch64-code.fd
             -drive if=pflash,format=raw,file=edk2-aarch64-vars.fd
-            -drive file=automated-linux-root.img,if=none,id=hd0,format=raw
+            -drive file=automated-linux-root.vmdk,if=none,id=hd0,format=vmdk
             -device virtio-blk-device,drive=hd0
             -netdev user,id=net0,hostfwd=tcp::{{ qemu.ssh_host_port }}-:22
             -device virtio-net-pci,netdev=net0 -nographic
@@ -169,7 +214,7 @@
             -m {{ qemu.memory }}
             -drive if=pflash,format=raw,readonly=on,file={{ qemu_prefix.stdout }}/share/qemu/edk2-aarch64-code.fd
             -drive if=pflash,format=raw,file=edk2-aarch64-vars.fd
-            -drive file=automated-linux-root.img,if=none,id=hd0,format=raw
+            -drive file=automated-linux-root.vmdk,if=none,id=hd0,format=vmdk
             -device virtio-blk-device,drive=hd0 -device virtio-gpu-pci
             -device qemu-xhci -device usb-kbd
             -netdev user,id=net0,hostfwd=tcp::{{ qemu.ssh_host_port }}-:22

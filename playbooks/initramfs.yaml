@@ -222,24 +222,53 @@
         state: directory
         mode: "0755"
 
-    - name: Find loop device for root image
-      # Deliberately re-derived here rather than relying on the
-      # root_loop_device fact set in prepare.yaml persisting across plays —
-      # this file is meant to be safe to run standalone too (see header
-      # comment), not just chained after prepare.yaml in the same run.
+    - name: Ensure root vmdk is connected via qemu-nbd
+      # Deliberately re-derived here rather than relying on prepare.yaml's
+      # connection persisting across plays — this file is meant to be safe
+      # to run standalone too (see header comment), not just chained after
+      # prepare.yaml in the same run. Idempotent: skips if nbd_device
+      # already reports a nonzero size (already connected).
+      # blockdev --rereadpt is skipped once the root partition is mounted:
+      # BLKRRPART refuses with "Device or resource busy" against a device
+      # with a mounted partition, and nothing needs re-reading anyway if
+      # the partition table hasn't changed since it was last read.
       ansible.builtin.shell: |
-        set -o pipefail
-        losetup -j {{ root_image.image }} | cut -d: -f1
+        set -e -o pipefail
+        dev_name=$(basename {{ root_image.nbd_device }})
+        size=$(cat /sys/class/block/${dev_name}/size 2>/dev/null || echo 0)
+        if [ "$size" = "0" ]; then
+          qemu-nbd --connect={{ root_image.nbd_device }} {{ root_image.image }}
+        fi
+        mountpoint -q {{ root_image.mount_point }} || blockdev --rereadpt {{ root_image.nbd_device }}
       args:
         executable: /bin/bash
-      register: root_loop
-      changed_when: false
+      become: true
+      changed_when: true
+
+    - name: Ensure partition device nodes exist for root nbd device
+      # Always recreated (not just "if missing"): a disconnect/reconnect
+      # cycle within the same container session can hand out a different
+      # major:minor for the same partition, leaving a stale node behind
+      # that points at nothing.
+      ansible.builtin.shell: |
+        set -o pipefail
+        dev_name=$(basename {{ root_image.nbd_device }})
+        for part in p1 p2; do
+          dev="{{ root_image.nbd_device }}${part}"
+          devmm=$(cat /sys/class/block/${dev_name}/${dev_name}${part}/dev)
+          rm -f "$dev"
+          mknod "$dev" b "${devmm%%:*}" "${devmm##*:}"
+        done
+      args:
+        executable: /bin/bash
+      become: true
+      changed_when: true
 
     - name: Mount EFI System Partition # noqa: syntax-check[unknown-module]
       become: true
       ansible.posix.mount:
         path: "{{ boot.esp_mount_point }}"
-        src: "{{ root_loop.stdout }}p1"
+        src: "{{ root_image.nbd_device }}p1"
         fstype: "vfat"
         state: "ephemeral"
 
