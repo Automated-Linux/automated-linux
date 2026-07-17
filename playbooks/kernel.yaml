@@ -142,6 +142,38 @@
         - result.rc != 0
       changed_when: result.rc == 0
 
+    - name: Sign kernel modules and disable IMA appraisal outright
+      # allmodconfig turns on CONFIG_IMA/CONFIG_IMA_APPRAISE plus every
+      # policy source that can force module-load appraisal — tried two
+      # narrower fixes first (CONFIG_IMA_APPRAISE_MODSIG, then disabling
+      # just CONFIG_IMA_ARCH_POLICY) and both left the exact same denial
+      # (op=appraise_data cause=IMA-signature-required) against a module
+      # confirmed correctly signed via modinfo/"~Module signature
+      # appended~" — the actual builtin policy forcing this is
+      # CONFIG_IMA_APPRAISE_REQUIRE_MODULE_SIGS (a compile-time policy
+      # entirely separate from the arch/secure-boot one, hardcoding
+      # appraise_type=imasig — plain xattr IMA signatures only, no modsig
+      # accepted regardless of IMA_APPRAISE_MODSIG). Rather than chase each
+      # IMA_APPRAISE_REQUIRE_*_SIGS sibling (firmware/kexec/policy) one
+      # rebuild at a time, disable CONFIG_IMA_APPRAISE itself — same
+      # reasoning as the KASAN/UBSAN/staging strip above: this is hardening
+      # this image has no use for. Modules stay signed (CONFIG_MODULE_SIG_ALL)
+      # since that's harmless and keeps the door open to re-enable appraisal
+      # later without re-signing.
+      ansible.builtin.shell: |
+        set -e
+        ./scripts/config --enable CONFIG_MODULE_SIG
+        ./scripts/config --enable CONFIG_MODULE_SIG_ALL
+        ./scripts/config --enable CONFIG_MODULE_SIG_SHA256
+        ./scripts/config --disable CONFIG_IMA_APPRAISE
+        make ARCH=arm64 olddefconfig
+      args:
+        chdir: "{{ sources_image.mount_point }}/{{ kernel.version }}"
+      register: result
+      failed_when:
+        - result.rc != 0
+      changed_when: result.rc == 0
+
     - name: Verify sanitizer/instrumentation flags were actually stripped
       # Cheap correctness gate before committing to a multi-hour build: fail
       # fast here instead of discovering -fsanitize=... on every compile
