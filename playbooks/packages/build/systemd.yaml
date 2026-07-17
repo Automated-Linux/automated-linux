@@ -153,6 +153,18 @@
     dest: "{{ root_image.mount_point }}/etc/systemd/network/20-wired-dhcp.network"
     mode: "0644"
 
+- name: Ensure /etc/modules-load.d exists
+  ansible.builtin.file:
+    path: "{{ root_image.mount_point }}/etc/modules-load.d"
+    state: directory
+    mode: "0755"
+
+- name: Load af_packet at boot (needed by LLDP and the DHCPv4 client's raw socket)
+  ansible.builtin.template:
+    src: rootfs/etc/modules-load.d/network.conf.j2
+    dest: "{{ root_image.mount_point }}/etc/modules-load.d/network.conf"
+    mode: "0644"
+
 - name: Point /etc/resolv.conf at systemd-resolved's stub
   ansible.builtin.file:
     src: /run/systemd/resolve/stub-resolv.conf

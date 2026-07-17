@@ -2,4 +2,10 @@
 Name=!lo
 
 [Network]
+# LLDP needs an AF_PACKET raw socket, which this kernel doesn't expose
+# (no CONFIG_PACKET) — left enabled, the LLDP client's startup failure
+# was enough to push the whole interface into "failed" state, blocking
+# it from ever reaching the DHCP request below.
+LLDP=no
+EmitLLDP=no
 DHCP=yes

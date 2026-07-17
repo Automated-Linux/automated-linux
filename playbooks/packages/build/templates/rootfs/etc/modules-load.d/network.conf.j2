@@ -1,0 +1,6 @@
+# af_packet doesn't auto-load via the kernel's own request_module() the
+# first time something opens an AF_PACKET socket — both LLDP and the
+# DHCPv4 client's initial DISCOVER (sent before the interface has an IP,
+# so it must go out over a raw packet socket) silently never fire without
+# it. Load it explicitly, before systemd-networkd starts.
+af_packet
