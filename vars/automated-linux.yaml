@@ -72,6 +72,21 @@ qemu:
   memory: "2048"
   cpus: "4"
   ssh_host_port: "2222"
+# OVA export (ova.yaml) — packages the already-built root vmdk into a
+# standard OVF/OVA appliance so it can be imported into hypervisors that
+# don't understand a bare vmdk attached via qemu-nbd (VirtualBox, VMware
+# Fusion/Workstation, etc.), not just Parallels/QEMU. Runs on the Mac
+# (localhost), like the second play of qemu.yaml, so paths are relative to
+# build-images/ (via playbook_dir in ova.yaml) rather than docker.workspace,
+# which only means anything inside the build container.
+ova:
+  name: "automated-linux"
+  disk_file: "automated-linux-disk1.vmdk"
+  ovf_file: "automated-linux.ovf"
+  manifest_file: "automated-linux.mf"
+  archive_file: "automated-linux.ova"
+  memory_mb: "{{ qemu.memory }}"
+  cpus: "{{ qemu.cpus }}"
 directories:
   - "{{ root_image.mount_point }}/etc"
   - "{{ root_image.mount_point }}/var"

@@ -1,0 +1,131 @@
+# code: language=ansible
+---
+# Packages the already-built root vmdk (automated-linux-root.vmdk, produced
+# by prepare.yaml/qemu.yaml) into a standard OVF/OVA appliance
+# (build-images/automated-linux.ova), importable into hypervisors that
+# understand OVF (VirtualBox, VMware Fusion/Workstation, ...) instead of
+# only Parallels/QEMU. Runs entirely on the Mac (localhost), like the
+# second play of qemu.yaml — no build container involved. Run it after a
+# normal build (automated-linux.yaml/qemu.yaml) has produced the vmdk:
+#
+#   ansible-playbook ova.yaml
+#
+- name: Export the built VM as an OVA appliance
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../vars/automated-linux.yaml
+
+  tasks:
+    - name: Locate build-images directory
+      ansible.builtin.set_fact:
+        build_images_dir: "{{ playbook_dir }}/../build-images"
+
+    - name: Ensure root vmdk exists
+      ansible.builtin.stat:
+        path: "{{ build_images_dir }}/automated-linux-root.vmdk"
+        get_checksum: false
+      register: root_vmdk
+
+    - name: Fail if the root vmdk hasn't been built yet
+      ansible.builtin.fail:
+        msg: >-
+          {{ build_images_dir }}/automated-linux-root.vmdk does not exist —
+          run automated-linux.yaml (or at least prepare.yaml) first.
+      when: not root_vmdk.stat.exists
+
+    - name: Ensure qemu-img is installed
+      community.general.homebrew:
+        name:
+          - qemu
+        state: present
+
+    - name: Check for an existing streamOptimized disk copy
+      ansible.builtin.stat:
+        path: "{{ build_images_dir }}/{{ ova.disk_file }}"
+        get_checksum: false
+      register: streamed_disk
+
+    - name: Convert root vmdk to streamOptimized format
+      # OVA/OVF requires the "streamOptimized" vmdk subformat (compressed,
+      # read sequentially) — the root vmdk itself is monolithicSparse
+      # (chosen so qemu-nbd/Parallels can attach it directly, see
+      # vars/automated-linux.yaml), which OVF does not accept. This writes
+      # a separate copy so the original stays attachable/bootable as-is.
+      # Skipped when a copy already exists and is newer than the source, the
+      # same "safe to re-run" pattern prepare.yaml uses for image creation.
+      ansible.builtin.command:
+        cmd: >-
+          qemu-img convert -O vmdk -o subformat=streamOptimized
+          {{ build_images_dir }}/automated-linux-root.vmdk
+          {{ build_images_dir }}/{{ ova.disk_file }}
+      when: >-
+        not streamed_disk.stat.exists or
+        streamed_disk.stat.mtime < root_vmdk.stat.mtime
+      changed_when: true
+
+    - name: Read virtual disk capacity from the root vmdk
+      ansible.builtin.command:
+        cmd: "qemu-img info --output=json {{ build_images_dir }}/automated-linux-root.vmdk"
+      register: root_vmdk_info
+      changed_when: false
+
+    - name: Stat the streamOptimized disk copy
+      ansible.builtin.stat:
+        path: "{{ build_images_dir }}/{{ ova.disk_file }}"
+        get_checksum: false
+      register: streamed_disk_final
+
+    - name: Compute OVF disk facts
+      ansible.builtin.set_fact:
+        ova_disk_capacity_bytes: "{{ (root_vmdk_info.stdout | from_json)['virtual-size'] }}"
+        ova_disk_populated_bytes: "{{ streamed_disk_final.stat.size }}"
+        ova_disk_file_size: "{{ streamed_disk_final.stat.size }}"
+
+    - name: Render the OVF descriptor
+      ansible.builtin.template:
+        src: templates/ova/automated-linux.ovf.j2
+        dest: "{{ build_images_dir }}/{{ ova.ovf_file }}"
+        mode: "0644"
+
+    - name: Compute SHA256 checksums for the manifest
+      ansible.builtin.stat:
+        path: "{{ build_images_dir }}/{{ item }}"
+        checksum_algorithm: sha256
+      register: manifest_checksums
+      with_items:
+        - "{{ ova.ovf_file }}"
+        - "{{ ova.disk_file }}"
+
+    - name: Write the OVF manifest (.mf)
+      ansible.builtin.copy:
+        dest: "{{ build_images_dir }}/{{ ova.manifest_file }}"
+        mode: "0644"
+        content: |-
+          {% for result in manifest_checksums.results -%}
+          SHA256({{ result.item }})= {{ result.stat.checksum }}
+          {% endfor %}
+
+    - name: Remove any previous OVA archive
+      ansible.builtin.file:
+        path: "{{ build_images_dir }}/{{ ova.archive_file }}"
+        state: absent
+
+    - name: Assemble the OVA archive # noqa: command-instead-of-module
+      # OVF spec requires the descriptor first, then the manifest, then the
+      # referenced disk(s), each stored by plain basename (not full path) —
+      # tar's cwd is set to build-images/ so the archive doesn't embed
+      # absolute paths. ansible.builtin.archive doesn't guarantee member
+      # order or an uncompressed plain-tar/ustar layout, both of which the
+      # OVA format requires, so a plain tar command is used instead.
+      ansible.builtin.command:
+        cmd: >-
+          tar -cf {{ ova.archive_file }}
+          {{ ova.ovf_file }} {{ ova.manifest_file }} {{ ova.disk_file }}
+        chdir: "{{ build_images_dir }}"
+      changed_when: true
+
+    - name: Show the resulting OVA
+      ansible.builtin.debug:
+        msg: "Wrote {{ build_images_dir }}/{{ ova.archive_file }}"

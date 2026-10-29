@@ -111,8 +111,19 @@ ansible-playbook docker.yaml prepare.yaml packages/toolchain.yaml kernel.yaml
 | [`packages/build.yaml`](playbooks/packages/build.yaml) | Container | Orchestrator: mounts `/dev` `/proc` `/sys` `/run` into the target root, then imports ~60 modules under [`packages/build/`](playbooks/packages/build/) — one file per package, same pattern as `packages/toolchain/` — in dependency order, ending with **systemd built and wired up as `/sbin/init`** (PID 1, `multi-user.target` default, getty on both the serial console and `tty1`, D-Bus/logind/udev all active, networking via `systemd-networkd`+`systemd-resolved` — see below). Every package is built natively inside the chroot using the gcc/binutils/glibc that `packages/toolchain.yaml` already installed into `{{ root_image.mount_point }}/usr` |
 | [`initramfs.yaml`](playbooks/initramfs.yaml) | Container | Builds `build-images/initramfs.img` from binaries already in the root image (util-linux, kmod, systemd-udevd) so the real root storage controller can be detected and its module loaded before root is mounted, then installs GRUB to the image's EFI System Partition — this is what makes the image boot on real UEFI arm64 hardware, not just via QEMU's `-kernel` shortcut |
 | [`qemu.yaml`](playbooks/qemu.yaml) | Container, then Mac (localhost) | Repairs the root vmdk's filesystems (`e2fsck`/`fsck.vfat` via `qemu-nbd`, in the container) and disconnects it, then on the Mac: installs QEMU, deletes the build container, boots through OVMF+GRUB+initramfs and verifies the system |
+| [`ova.yaml`](playbooks/ova.yaml) | Mac (localhost) | **Not part of the main chain — run separately after a build.** Converts the root vmdk to the streamOptimized subformat OVF requires, generates an OVF descriptor + SHA256 manifest, and tars them into `build-images/automated-linux.ova` for import into OVF-aware hypervisors (VirtualBox, VMware Fusion/Workstation) instead of only Parallels/QEMU |
 | [`site.yaml`](playbooks/site.yaml) | Mac (localhost) | Chains `docker.yaml` + `prepare.yaml` + `packages/toolchain.yaml` + `kernel.yaml` (toolchain/kernel only, no userland or boot) |
 | [`automated-linux.yaml`](playbooks/automated-linux.yaml) | Mac (localhost) | **Main entrypoint.** Chains all of the above, in order, for the complete build |
+
+### Exporting an OVA
+
+Once a build has completed (the root vmdk exists), package it as a standard OVA appliance:
+
+```sh
+ansible-playbook ova.yaml
+```
+
+This produces `build-images/automated-linux.ova`, importable into VirtualBox, VMware Fusion/Workstation, or any other OVF-aware hypervisor. It's safe to re-run — the expensive streamOptimized conversion step is skipped if the existing copy is already newer than the root vmdk. Note the guest is **aarch64 UEFI**, same as the QEMU boot test above, not x86_64 — only hypervisors that can run arm64 guests will actually boot it; other tooling may still accept the import but fail to run it.
 
 ## Networking
 
